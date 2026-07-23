@@ -1,0 +1,185 @@
+// DB Central — pessoas, stands, subscrição e ligação pessoa<->stand.
+// As tabelas de cada stand (vehicles, sales, ...) NÃO vivem aqui: cada stand
+// tem o seu próprio schema Postgres (ver src/tenant/tenant-schema.sql),
+// criado dinamicamente pelo StandsService quando um novo stand é provisionado.
+// Por isso este schema.prisma cobre só o schema "public".
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TokenEstado {
+  ativo
+  em_carencia
+  expirado
+  pendente
+  suspenso
+}
+
+enum Plano {
+  mensal
+  anual
+}
+
+enum MemberRole {
+  owner
+  vendedor
+}
+
+enum Plataforma {
+  windows
+  android
+  ios_pwa
+  macos_pwa
+}
+
+enum TipoEntidade {
+  singular
+  coletiva
+}
+
+enum TipoDocumentoLegal {
+  termos
+  privacidade
+  dpa
+}
+
+model Person {
+  id           String   @id @default(uuid()) @db.Uuid
+  nome         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  idioma       String   @default("pt")
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now()) @map("criado_em")
+
+  memberships     StandMember[]
+  refreshTokens   RefreshToken[]
+  legalAcceptances LegalAcceptance[]
+
+  @@map("people")
+}
+
+model Stand {
+  id                          String      @id @default(uuid()) @db.Uuid
+  nome                        String
+  nif                         String?
+  morada                      String?
+  schemaName                  String      @unique @map("schema_name")
+  token                       String      @unique
+  tokenEstado                 TokenEstado @default(pendente) @map("token_estado")
+  tokenValidoAte              DateTime?   @map("token_valido_ate") @db.Date
+  diasAvisoPrevio             Int         @default(5) @map("dias_aviso_previo")
+  diasCarencia                Int         @default(5) @map("dias_carencia")
+  plano                       Plano?
+  precoAcordado                Decimal?    @map("preco_acordado") @db.Decimal(10, 2)
+  notasPagamento              String?     @map("notas_pagamento")
+  vendedorPodeAdicionar       Boolean     @default(false) @map("vendedor_pode_adicionar")
+  vendedorPodeEditarPrecoKms  Boolean     @default(false) @map("vendedor_pode_editar_preco_kms")
+  vendedorPrecisaAprovacao    Boolean     @default(true) @map("vendedor_precisa_aprovacao")
+  criadoEm                    DateTime    @default(now()) @map("criado_em")
+
+  members StandMember[]
+
+  @@map("stands")
+}
+
+model StandMember {
+  id       String     @id @default(uuid()) @db.Uuid
+  standId  String     @map("stand_id") @db.Uuid
+  personId String     @map("person_id") @db.Uuid
+  role     MemberRole
+  ativo    Boolean    @default(true)
+  criadoEm DateTime   @default(now()) @map("criado_em")
+
+  stand  Stand  @relation(fields: [standId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([standId, personId])
+  @@map("stand_members")
+}
+
+// Refresh tokens rotativos (secção 21): cada uso gera um novo e invalida o
+// anterior; reapresentação de um token já usado revoga todas as sessões
+// desse utilizador (sinal de token roubado).
+model RefreshToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  personId     String    @map("person_id") @db.Uuid
+  standId      String    @map("stand_id") @db.Uuid
+  tokenHash    String    @unique @map("token_hash")
+  device       String?
+  usadoEm      DateTime? @map("usado_em")
+  revogado     Boolean   @default(false)
+  substituidoPor String? @map("substituido_por") // hash do token seguinte (sha256), não um UUID
+  expiraEm     DateTime  @map("expira_em")
+  criadoEm     DateTime  @default(now()) @map("criado_em")
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+// Versionamento de app / atualização obrigatória (secção 22). Uma linha por
+// plataforma (não várias linhas históricas) — o super-admin edita a mesma
+// linha quando sobe a versão mínima, `atualizado_em` já mostra quando foi.
+model AppVersion {
+  id                      String     @id @default(uuid()) @db.Uuid
+  plataforma              Plataforma @unique
+  versaoMinimaObrigatoria String     @map("versao_minima_obrigatoria")
+  versaoRecomendada       String?    @map("versao_recomendada")
+  changelogUrl            String?    @map("changelog_url")
+  atualizadoEm            DateTime   @default(now()) @updatedAt @map("atualizado_em")
+
+  @@map("app_versions")
+}
+
+// Secção 24 — documentos legais PS CarStand↔stand (não envolve o
+// comprador da viatura, essa cláusula vive dentro do Registo de Compra).
+// 1 única linha, editável só pelo super-admin — os 3 documentos usam
+// {{IDENTIFICACAO_PS_CARSTAND}}, substituído a partir daqui (secção 24.0).
+model PlatformEntityConfig {
+  id                  String       @id @default(uuid()) @db.Uuid
+  tipoEntidade        TipoEntidade @map("tipo_entidade")
+  nome                String
+  identificadorFiscal String       @map("identificador_fiscal")
+  morada              String
+  cae                 String?
+  atualizadoEm        DateTime     @default(now()) @updatedAt @map("atualizado_em")
+
+  @@map("platform_entity_config")
+}
+
+// Desvio face à secção 24 original: `conteudo` guarda o texto já
+// renderizado (com o token substituído) em vez de só um `conteudo_url` —
+// mais simples para servir/mostrar num ecrã de aceitação da app, sem
+// precisar de gerar e alojar um ficheiro a cada alteração.
+model LegalDocument {
+  id          String             @id @default(uuid()) @db.Uuid
+  tipo        TipoDocumentoLegal
+  versao      Int
+  conteudo    String             @db.Text
+  publicadoEm DateTime           @default(now()) @map("publicado_em")
+
+  acceptances LegalAcceptance[]
+
+  @@unique([tipo, versao])
+  @@map("legal_documents")
+}
+
+model LegalAcceptance {
+  id              String   @id @default(uuid()) @db.Uuid
+  personId        String   @map("person_id") @db.Uuid
+  legalDocumentId String   @map("legal_document_id") @db.Uuid
+  aceiteEm        DateTime @default(now()) @map("aceite_em")
+
+  person        Person        @relation(fields: [personId], references: [id], onDelete: Cascade)
+  legalDocument LegalDocument @relation(fields: [legalDocumentId], references: [id], onDelete: Cascade)
+
+  @@unique([personId, legalDocumentId])
+  @@map("legal_acceptances")
+}

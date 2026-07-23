@@ -1,0 +1,40 @@
+# Blueprint do Render (https://render.com/docs/blueprint-spec) — permite criar
+# o serviço via "New > Blueprint" apontando a este repositório, em vez de
+# preencher tudo manualmente no dashboard. Os valores secretos (sync: false)
+# continuam a ter de ser colados manualmente no dashboard depois — nunca
+# vivem neste ficheiro nem em controlo de versões.
+services:
+  - type: web
+    name: ps-carstand-backend
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm install && npm run build
+    startCommand: npm run start:render
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.1-flash-lite
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: "3600"
+      - key: REFRESH_TOKEN_EXPIRES_IN
+        value: "2592000"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: documentos
+      - key: CRAWLER_CACHE_TTL_HOURS
+        value: "48"
+      - key: GRACE_PERIOD_DAYS
+        value: "5"
+      - key: ADMIN_API_KEY
+        sync: false
