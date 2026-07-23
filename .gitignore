@@ -3,7 +3,7 @@ dist/
 .env
 *.log
 coverage/
-storage/
+/storage/
 *.jpg
 *.jpeg
 *.png
