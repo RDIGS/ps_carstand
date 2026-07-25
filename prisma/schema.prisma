@@ -61,6 +61,7 @@ model Person {
   memberships     StandMember[]
   refreshTokens   RefreshToken[]
   legalAcceptances LegalAcceptance[]
+  suggestions     Suggestion[]
 
   @@map("people")
 }
@@ -86,9 +87,26 @@ model Stand {
   vendedorPrecisaAprovacao    Boolean     @default(true) @map("vendedor_precisa_aprovacao")
   criadoEm                    DateTime    @default(now()) @map("criado_em")
 
-  members StandMember[]
+  members     StandMember[]
+  suggestions Suggestion[]
 
   @@map("stands")
+}
+
+// Sugestões enviadas pelos utilizadores dos stands (owner ou vendedor) —
+// lidas pelo dono da plataforma via /admin/suggestions, secção nova pedida
+// pelo utilizador em 2026-07-25 (fora do documento de arquitetura v1.0).
+model Suggestion {
+  id       String   @id @default(uuid()) @db.Uuid
+  standId  String   @map("stand_id") @db.Uuid
+  personId String   @map("person_id") @db.Uuid
+  texto    String
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  stand  Stand  @relation(fields: [standId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@map("suggestions")
 }
 
 model StandMember {

@@ -91,4 +91,43 @@ export class TeamService {
       feitoPor: user.sub,
     });
   }
+
+  // Variantes usadas pelo painel de super-admin (AdminApiKeyGuard, sem
+  // pessoa autenticada) — mesma lógica de negócio, mas parametrizadas por
+  // standId em vez de um JwtPayload, e sem entrada no audit log do stand
+  // (não há aqui nenhum "membro" que tenha feito a ação; é o dono da
+  // plataforma a atuar de fora).
+  async inviteByStandId(standId: string, dto: InviteMemberDto) {
+    let person = await this.prisma.person.findUnique({ where: { email: dto.email } });
+    let tempPassword: string | undefined;
+
+    if (!person) {
+      tempPassword = randomBytes(6).toString('base64url');
+      person = await this.prisma.person.create({
+        data: { nome: dto.nome, email: dto.email, passwordHash: await hashPassword(tempPassword) },
+      });
+    }
+
+    const existingMembership = await this.prisma.standMember.findUnique({
+      where: { standId_personId: { standId, personId: person.id } },
+    });
+    if (existingMembership) {
+      throw new BadRequestException({ error: 'membro_ja_existe', message: 'Esta pessoa já faz parte da equipa.' });
+    }
+
+    const membership = await this.prisma.standMember.create({ data: { standId, personId: person.id, role: dto.role } });
+    return { membership, tempPassword };
+  }
+
+  async updateByStandId(standId: string, memberId: string, dto: UpdateMemberDto) {
+    const membership = await this.prisma.standMember.findFirst({ where: { id: memberId, standId } });
+    if (!membership) throw new NotFoundException({ error: 'nao_encontrado', message: 'Membro não encontrado.' });
+    return this.prisma.standMember.update({ where: { id: memberId }, data: { role: dto.role, ativo: dto.ativo } });
+  }
+
+  async removeByStandId(standId: string, memberId: string) {
+    const membership = await this.prisma.standMember.findFirst({ where: { id: memberId, standId } });
+    if (!membership) throw new NotFoundException({ error: 'nao_encontrado', message: 'Membro não encontrado.' });
+    await this.prisma.standMember.delete({ where: { id: memberId } });
+  }
 }
