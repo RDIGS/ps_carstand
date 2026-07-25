@@ -126,6 +126,14 @@ export class VehiclesRepository {
     return rows[0];
   }
 
+  async listExpenses(schemaName: string, vehicleId: string) {
+    return this.tenant.query(
+      schemaName,
+      `SELECT * FROM vehicle_expenses WHERE vehicle_id = $1 ORDER BY data DESC, criado_em DESC`,
+      [vehicleId],
+    );
+  }
+
   async addPhoto(schemaName: string, vehicleId: string, url: string, tipo: string) {
     const rows = await this.tenant.query(
       schemaName,

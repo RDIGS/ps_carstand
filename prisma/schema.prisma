@@ -70,6 +70,8 @@ model Stand {
   nome                        String
   nif                         String?
   morada                      String?
+  contacto                    String?
+  redesSociais                String?     @map("redes_sociais")
   schemaName                  String      @unique @map("schema_name")
   token                       String      @unique
   tokenEstado                 TokenEstado @default(pendente) @map("token_estado")

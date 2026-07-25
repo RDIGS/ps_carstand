@@ -114,6 +114,12 @@ export class VehiclesController {
     return this.vehiclesService.addExpense(user, id, dto.categoria, dto.descricao, dto.valor);
   }
 
+  @Get(':id/expenses')
+  @Roles('owner')
+  listExpenses(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {
+    return this.vehiclesService.listExpenses(user, id);
+  }
+
   // Só chamado quando o utilizador confirma que as fotos do DUA já estavam
   // cortadas/prontas (secção 23) — caso contrário esta rota nunca é chamada.
   @Post(':id/dua-photos')

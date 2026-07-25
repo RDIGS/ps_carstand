@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TenantService } from '../tenant/tenant.service';
 import { CreateStandDto } from './dto/create-stand.dto';
 import { UpdateStandTokenDto } from './dto/update-stand-token.dto';
+import { UpdateStandProfileDto } from './dto/update-stand-profile.dto';
 import { generateStandToken } from './stand-token.util';
 import { hashPassword } from '../common/utils/password.util';
 
@@ -50,6 +51,24 @@ export class StandsService {
 
   list() {
     return this.prisma.stand.findMany({ orderBy: { criadoEm: 'desc' } });
+  }
+
+  getProfile(standId: string) {
+    return this.prisma.stand.findUniqueOrThrow({
+      where: { id: standId },
+      select: { id: true, nome: true, contacto: true, redesSociais: true },
+    });
+  }
+
+  updateProfile(standId: string, dto: UpdateStandProfileDto) {
+    return this.prisma.stand.update({
+      where: { id: standId },
+      data: {
+        contacto: dto.contacto,
+        redesSociais: dto.redesSociais,
+      },
+      select: { id: true, nome: true, contacto: true, redesSociais: true },
+    });
   }
 
   async updateToken(standId: string, dto: UpdateStandTokenDto) {

@@ -180,6 +180,11 @@ export class VehiclesService {
     return expense;
   }
 
+  async listExpenses(user: JwtPayload, vehicleId: string) {
+    await this.findOne(user, vehicleId);
+    return this.repo.listExpenses(user.schemaName, vehicleId);
+  }
+
   // Só chamado quando o utilizador confirma que as fotos do DUA já estavam
   // cortadas/prontas (mesma regra do CC, secção 23) — caso contrário nunca é
   // chamado e as fotos do DUA nunca chegam a ser guardadas, só os dados
