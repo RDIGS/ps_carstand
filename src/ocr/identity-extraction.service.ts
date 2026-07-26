@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { IDENTITY_SYSTEM_PROMPT } from './prompts/identity.prompt';
 import { IDENTITY_RESPONSE_SCHEMA, CAMPOS_COM_CONFIANCA } from './identity-response-schema';
 import { IdentityExtractionResult, IdentityExtractedFields } from './identity-extraction.types';
+import { fetchGemini } from './gemini-fetch.util';
 
 const CAMPOS_CRITICOS = ['nome_completo', 'numero_documento'];
 const CONFIANCA_MINIMA = 0.85;
@@ -17,7 +18,7 @@ export class IdentityExtractionService {
     const model = this.config.get<string>('GEMINI_MODEL', 'gemini-3.1-flash-lite');
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
 
-    const response = await fetch(
+    const response = await fetchGemini(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
         method: 'POST',

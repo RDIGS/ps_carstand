@@ -20,6 +20,11 @@ services:
         sync: false
       - key: GEMINI_MODEL
         value: gemini-3.1-flash-lite
+      # Proxy fixo nos EUA só para a chamada ao Gemini — a Generative
+      # Language API bloqueia pedidos originados na UE (o serviço corre em
+      # Frankfurt). Ver comentário em src/ocr/gemini-fetch.util.ts.
+      - key: OCR_PROXY_URL
+        sync: false
       - key: JWT_SECRET
         sync: false
       - key: JWT_EXPIRES_IN

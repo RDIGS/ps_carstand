@@ -4,6 +4,7 @@ import { DUA_SYSTEM_PROMPT } from './prompts/dua.prompt';
 import { DUA_RESPONSE_SCHEMA, CAMPOS_COM_CONFIANCA } from './dua-response-schema';
 import { DuaExtractionResult, DuaExtractedFields } from './dua-extraction.types';
 import { MATRICULA_REGEX } from '../common/utils/matricula.util';
+import { fetchGemini } from './gemini-fetch.util';
 
 // Campos onde uma confiança baixa força revisão manual mesmo que a IA não
 // tenha assinalado nada (secção 14, nota final).
@@ -20,7 +21,7 @@ export class DuaExtractionService {
     const model = this.config.get<string>('GEMINI_MODEL', 'gemini-3.1-flash-lite');
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
 
-    const response = await fetch(
+    const response = await fetchGemini(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
         method: 'POST',
