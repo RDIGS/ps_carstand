@@ -21,32 +21,44 @@ export class DuaExtractionService {
     const model = this.config.get<string>('GEMINI_MODEL', 'gemini-3.1-flash-lite');
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
 
-    const response = await fetchGemini(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: DUA_SYSTEM_PROMPT },
-                { inline_data: { mime_type: 'image/jpeg', data: fotoFrenteBase64 } },
-                { inline_data: { mime_type: 'image/jpeg', data: fotoVersoBase64 } },
-              ],
+    let response: Response;
+    try {
+      response = await fetchGemini(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: DUA_SYSTEM_PROMPT },
+                  { inline_data: { mime_type: 'image/jpeg', data: fotoFrenteBase64 } },
+                  { inline_data: { mime_type: 'image/jpeg', data: fotoVersoBase64 } },
+                ],
+              },
+            ],
+            // responseSchema testado contra a API real (v1beta): garante a forma do
+            // JSON pela própria API, incluindo as chaves de "confianca" fixas aos
+            // nomes dos campos — não depende só da instrução em texto do prompt.
+            generationConfig: {
+              responseMimeType: 'application/json',
+              responseSchema: DUA_RESPONSE_SCHEMA,
+              temperature: 0.1,
             },
-          ],
-          // responseSchema testado contra a API real (v1beta): garante a forma do
-          // JSON pela própria API, incluindo as chaves de "confianca" fixas aos
-          // nomes dos campos — não depende só da instrução em texto do prompt.
-          generationConfig: {
-            responseMimeType: 'application/json',
-            responseSchema: DUA_RESPONSE_SCHEMA,
-            temperature: 0.1,
-          },
-        }),
-      },
-    );
+          }),
+        },
+      );
+    } catch (err) {
+      // AbortError do timeout em gemini-fetch.util.ts (ou falha de rede) —
+      // sem isto, esta exceção "crua" propagava-se como 500 genérico em vez
+      // do erro claro que o resto desta função já usa para o Gemini.
+      this.logger.error(`Falha a contactar o Gemini: ${err instanceof Error ? err.message : err}`);
+      throw new UnprocessableEntityException({
+        error: 'ocr_indisponivel',
+        message: 'Não foi possível processar o documento neste momento. Tenta novamente.',
+      });
+    }
 
     if (!response.ok) {
       const body = await response.text();

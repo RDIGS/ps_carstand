@@ -18,29 +18,41 @@ export class IdentityExtractionService {
     const model = this.config.get<string>('GEMINI_MODEL', 'gemini-3.1-flash-lite');
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
 
-    const response = await fetchGemini(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: IDENTITY_SYSTEM_PROMPT },
-                { inline_data: { mime_type: 'image/jpeg', data: fotoFrenteBase64 } },
-                { inline_data: { mime_type: 'image/jpeg', data: fotoVersoBase64 } },
-              ],
+    let response: Response;
+    try {
+      response = await fetchGemini(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: IDENTITY_SYSTEM_PROMPT },
+                  { inline_data: { mime_type: 'image/jpeg', data: fotoFrenteBase64 } },
+                  { inline_data: { mime_type: 'image/jpeg', data: fotoVersoBase64 } },
+                ],
+              },
+            ],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              responseSchema: IDENTITY_RESPONSE_SCHEMA,
+              temperature: 0.1,
             },
-          ],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            responseSchema: IDENTITY_RESPONSE_SCHEMA,
-            temperature: 0.1,
-          },
-        }),
-      },
-    );
+          }),
+        },
+      );
+    } catch (err) {
+      // Mesmo motivo do dua-extraction.service.ts: sem isto, o timeout/erro
+      // de rede propagava-se como 500 genérico em vez do erro claro que o
+      // resto desta função já usa para falhas do Gemini.
+      this.logger.error(`Falha a contactar o Gemini: ${err instanceof Error ? err.message : err}`);
+      throw new UnprocessableEntityException({
+        error: 'ocr_indisponivel',
+        message: 'Não foi possível processar o documento neste momento. Tenta novamente.',
+      });
+    }
 
     if (!response.ok) {
       const body = await response.text();

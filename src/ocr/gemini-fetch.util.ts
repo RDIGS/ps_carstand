@@ -15,7 +15,19 @@ import { fetch as undiciFetch, ProxyAgent, type RequestInit as UndiciRequestInit
 const proxyUrl = process.env.OCR_PROXY_URL;
 const dispatcher = proxyUrl ? new ProxyAgent(proxyUrl) : undefined;
 
+// Sem isto, um Gemini/proxy lento ou pendurado deixa o pedido à espera para
+// sempre — nem o backend nem a app têm outro timeout nesta chamada, e o
+// utilizador via só um spinner infinito, sem erro nenhum (bug real
+// reportado em produção, 2026-07-27). O proxy dos EUA já adiciona ~38s de
+// latência normal (ver OCR_PROXY_URL acima); 60s dá margem sem ser tão
+// longo que pareça também pendurado.
+const GEMINI_TIMEOUT_MS = 60_000;
+
 export async function fetchGemini(url: string, init: UndiciRequestInit): Promise<Response> {
-  const response = await undiciFetch(url, dispatcher ? { ...init, dispatcher } : init);
+  const response = await undiciFetch(url, {
+    ...init,
+    ...(dispatcher ? { dispatcher } : {}),
+    signal: init.signal ?? AbortSignal.timeout(GEMINI_TIMEOUT_MS),
+  });
   return response as unknown as Response;
 }
