@@ -185,6 +185,43 @@ export class VehiclesService {
     return this.repo.listExpenses(user.schemaName, vehicleId);
   }
 
+  async updateExpense(
+    user: JwtPayload,
+    vehicleId: string,
+    expenseId: string,
+    fields: { categoria?: string; descricao?: string; valor?: number },
+  ) {
+    await this.findOne(user, vehicleId);
+    const existing = await this.repo.findExpenseById(user.schemaName, vehicleId, expenseId);
+    if (!existing) throw new NotFoundException({ error: 'nao_encontrado', message: 'Despesa não encontrada.' });
+
+    const updated = await this.repo.updateExpense(user.schemaName, expenseId, fields);
+    await this.audit.log(user.schemaName, {
+      entidade: 'vehicle_expense',
+      entidadeId: expenseId,
+      acao: 'atualizado',
+      valorAnterior: existing,
+      valorNovo: updated,
+      feitoPor: user.sub,
+    });
+    return updated;
+  }
+
+  async removeExpense(user: JwtPayload, vehicleId: string, expenseId: string) {
+    await this.findOne(user, vehicleId);
+    const existing = await this.repo.findExpenseById(user.schemaName, vehicleId, expenseId);
+    if (!existing) throw new NotFoundException({ error: 'nao_encontrado', message: 'Despesa não encontrada.' });
+
+    await this.repo.removeExpense(user.schemaName, expenseId);
+    await this.audit.log(user.schemaName, {
+      entidade: 'vehicle_expense',
+      entidadeId: expenseId,
+      acao: 'removido',
+      valorAnterior: existing,
+      feitoPor: user.sub,
+    });
+  }
+
   // Só chamado quando o utilizador confirma que as fotos do DUA já estavam
   // cortadas/prontas (mesma regra do CC, secção 23) — caso contrário nunca é
   // chamado e as fotos do DUA nunca chegam a ser guardadas, só os dados

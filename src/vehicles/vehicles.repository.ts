@@ -126,6 +126,38 @@ export class VehiclesRepository {
     return rows[0];
   }
 
+  async findExpenseById(schemaName: string, vehicleId: string, expenseId: string) {
+    const rows = await this.tenant.query(
+      schemaName,
+      `SELECT * FROM vehicle_expenses WHERE id = $1 AND vehicle_id = $2`,
+      [expenseId, vehicleId],
+    );
+    return rows[0] ?? null;
+  }
+
+  async updateExpense(
+    schemaName: string,
+    expenseId: string,
+    fields: { categoria?: string; descricao?: string; valor?: number },
+  ) {
+    const columns = Object.entries(fields).filter(([, v]) => v !== undefined);
+    if (columns.length === 0) {
+      const rows = await this.tenant.query(schemaName, `SELECT * FROM vehicle_expenses WHERE id = $1`, [expenseId]);
+      return rows[0] ?? null;
+    }
+    const setClauses = columns.map(([col], i) => `${col} = $${i + 2}`);
+    const rows = await this.tenant.query(
+      schemaName,
+      `UPDATE vehicle_expenses SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,
+      [expenseId, ...columns.map(([, v]) => v)],
+    );
+    return rows[0] ?? null;
+  }
+
+  async removeExpense(schemaName: string, expenseId: string) {
+    await this.tenant.query(schemaName, `DELETE FROM vehicle_expenses WHERE id = $1`, [expenseId]);
+  }
+
   async listExpenses(schemaName: string, vehicleId: string) {
     return this.tenant.query(
       schemaName,

@@ -1,7 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -20,6 +23,7 @@ import { CrawlerService } from '../crawlers/crawler.service';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto';
 import { CreateExpenseDto } from './dto/create-expense.dto';
+import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { ReserveVehicleDto } from './dto/reserve-vehicle.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -118,6 +122,28 @@ export class VehiclesController {
   @Roles('owner')
   listExpenses(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {
     return this.vehiclesService.listExpenses(user, id);
+  }
+
+  @Patch(':id/expenses/:expenseId')
+  @Roles('owner')
+  updateExpense(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('expenseId', ParseUUIDPipe) expenseId: string,
+    @Body() dto: UpdateExpenseDto,
+  ) {
+    return this.vehiclesService.updateExpense(user, id, expenseId, dto);
+  }
+
+  @Delete(':id/expenses/:expenseId')
+  @Roles('owner')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeExpense(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('expenseId', ParseUUIDPipe) expenseId: string,
+  ) {
+    return this.vehiclesService.removeExpense(user, id, expenseId);
   }
 
   // Só chamado quando o utilizador confirma que as fotos do DUA já estavam

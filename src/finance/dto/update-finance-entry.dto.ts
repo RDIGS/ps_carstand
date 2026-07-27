@@ -1,25 +1,24 @@
 import { IsDateString, IsIn, IsNumber, IsOptional, IsPositive, IsString } from 'class-validator';
 import { FINANCE_CATEGORIAS } from '../finance-categorias';
 
-export class CreateFinanceEntryDto {
+export class UpdateFinanceEntryDto {
+  @IsOptional()
   @IsIn(['receita', 'despesa'])
-  tipo!: 'receita' | 'despesa';
+  tipo?: 'receita' | 'despesa';
 
   @IsOptional()
   @IsIn(FINANCE_CATEGORIAS)
   categoria?: string;
 
+  @IsOptional()
   @IsNumber()
   @IsPositive()
-  valor!: number;
+  valor?: number;
 
   @IsOptional()
   @IsString()
   descricao?: string;
 
-  // Opcional: permite lançar algo com data retroativa (ex.: "esta despesa
-  // foi paga a semana passada, só agora tive tempo de a registar"). Sem
-  // isto, ficava sempre preso à data em que foi introduzida na app.
   @IsOptional()
   @IsDateString()
   data?: string;

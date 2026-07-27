@@ -98,7 +98,13 @@ CREATE INDEX idx_sales_vendedor ON sales(vendedor_id);
 CREATE TABLE finance_entries (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tipo TEXT CHECK (tipo IN ('receita','despesa')),
-  categoria TEXT,
+  -- Lista fixa (2026-07-27, ver src/finance/finance-categorias.ts) — antes
+  -- era texto livre, e "Renda"/"renda"/"Aluguer" viravam categorias
+  -- diferentes nos relatórios, impossibilitando agregação fiável.
+  categoria TEXT CHECK (categoria IN (
+    'renda','salarios','marketing','servicos_terceiros','impostos_taxas',
+    'seguros','manutencao_instalacoes','comissoes_recebidas','financiamento','outro'
+  )),
   valor NUMERIC(10,2) NOT NULL,
   descricao TEXT,
   data DATE DEFAULT CURRENT_DATE,
