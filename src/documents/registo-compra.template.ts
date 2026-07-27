@@ -1,7 +1,7 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 export interface RegistoCompraData {
-  stand: { nome: string; nif?: string | null; morada?: string | null };
+  stand: { nome: string; nif?: string | null; morada?: string | null; contacto?: string | null };
   vehicle: {
     matricula: string;
     marca: string;
@@ -15,6 +15,7 @@ export interface RegistoCompraData {
     compradorNif: string;
     compradorMorada?: string | null;
     compradorCp?: string | null;
+    compradorTelefone?: string | null;
     compradorIdentificacaoTipo?: string | null;
     compradorIdentificacaoNumero?: string | null;
     precoFinal: number;
@@ -77,6 +78,7 @@ export async function generateRegistoCompraPdf(data: RegistoCompraData): Promise
   drawField('NIF', data.sale.compradorNif);
   drawField('Morada', data.sale.compradorMorada ?? '-');
   drawField('Código Postal', data.sale.compradorCp ?? '-');
+  drawField('Telefone', data.sale.compradorTelefone ?? '-');
   drawField(
     'Documento de identificação',
     `${data.sale.compradorIdentificacaoTipo ?? '-'} ${data.sale.compradorIdentificacaoNumero ?? ''}`.trim(),
@@ -91,6 +93,62 @@ export async function generateRegistoCompraPdf(data: RegistoCompraData): Promise
   y -= lineHeight * 2;
   page.drawText('Assinatura do comprador: ______________________________', { x: MARGEM, y, size: 10, font });
 
+  // Secção 24.4: cláusula de autorização de tratamento de dados do
+  // comprador, numa página própria — o corpo do texto varia com o
+  // comprimento do nome/contacto do stand, por isso não dá para prever de
+  // antemão se cabe no que sobra da página 1.
+  const clausulaPage = pdf.addPage([595.28, 841.89]);
+  let clausulaY = clausulaPage.getHeight() - MARGEM;
+  const maxWidth = clausulaPage.getWidth() - MARGEM * 2;
+
+  clausulaPage.drawText('AUTORIZAÇÃO DE TRATAMENTO DE DADOS PESSOAIS', {
+    x: MARGEM,
+    y: clausulaY,
+    size: 12,
+    font: bold,
+    color: rgb(0.12, 0.14, 0.19),
+  });
+  clausulaY -= lineHeight * 2;
+
+  const contacto = data.stand.contacto?.trim() || '[contacto do stand não configurado]';
+  const paragrafo =
+    `O(A) comprador(a) identificado(a) no presente documento autoriza ${data.stand.nome}, enquanto ` +
+    `responsável pelo tratamento, a recolher e tratar os seus dados pessoais, incluindo a digitalização ` +
+    `do Cartão de Cidadão, com a finalidade exclusiva de formalizar o presente contrato de compra e venda ` +
+    `de veículo automóvel. Os dados serão conservados pelo prazo legal aplicável à conservação de ` +
+    `documentos comerciais e não serão utilizados para outras finalidades sem consentimento adicional. ` +
+    `O(A) comprador(a) pode exercer os seus direitos de acesso, retificação e apagamento dos dados junto ` +
+    `de ${data.stand.nome}, através de ${contacto}.`;
+
+  for (const linha of wrapText(paragrafo, font, 10, maxWidth)) {
+    clausulaPage.drawText(linha, { x: MARGEM, y: clausulaY, size: 10, font });
+    clausulaY -= lineHeight;
+  }
+
+  clausulaY -= lineHeight * 2;
+  clausulaPage.drawText('Assinatura do comprador: ______________________________  Data: __ / __ / ____', {
+    x: MARGEM,
+    y: clausulaY,
+    size: 10,
+    font,
+  });
+
   const bytes = await pdf.save();
   return Buffer.from(bytes);
+}
+
+function wrapText(text: string, font: Awaited<ReturnType<PDFDocument['embedFont']>>, size: number, maxWidth: number): string[] {
+  const linhas: string[] = [];
+  let linhaAtual = '';
+  for (const palavra of text.split(' ')) {
+    const tentativa = linhaAtual ? `${linhaAtual} ${palavra}` : palavra;
+    if (font.widthOfTextAtSize(tentativa, size) > maxWidth && linhaAtual) {
+      linhas.push(linhaAtual);
+      linhaAtual = palavra;
+    } else {
+      linhaAtual = tentativa;
+    }
+  }
+  if (linhaAtual) linhas.push(linhaAtual);
+  return linhas;
 }

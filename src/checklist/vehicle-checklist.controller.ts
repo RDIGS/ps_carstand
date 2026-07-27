@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { ChecklistService } from './checklist.service';
 import { ApplyTemplateDto } from './dto/apply-template.dto';
 import { AddChecklistItemDto } from './dto/add-item.dto';
@@ -42,5 +42,11 @@ export class VehicleChecklistController {
     @Body() dto: UpdateChecklistItemDto,
   ) {
     return this.checklistService.setItemConcluido(user, itemId, dto.concluido);
+  }
+
+  @Delete(':itemId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeItem(@CurrentUser() user: JwtPayload, @Param('itemId', ParseUUIDPipe) itemId: string) {
+    return this.checklistService.removeItem(user, itemId);
   }
 }

@@ -73,6 +73,7 @@ CREATE TABLE sales (
   comprador_nif TEXT NOT NULL,
   comprador_morada TEXT,
   comprador_cp TEXT,
+  comprador_telefone TEXT,
   comprador_identificacao_tipo TEXT CHECK (comprador_identificacao_tipo IN ('bi','cc','titulo_residencia','outro')),
   comprador_identificacao_numero TEXT,
   preco_final NUMERIC(10,2) NOT NULL,

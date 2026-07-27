@@ -95,6 +95,13 @@ export class VehiclesController {
     return this.vehiclesService.update(user, id, dto);
   }
 
+  @Delete(':id')
+  @Roles('owner')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {
+    return this.vehiclesService.remove(user, id);
+  }
+
   @Patch(':id/approve')
   @Roles('owner')
   approve(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {

@@ -40,6 +40,12 @@ export class ChecklistService {
     return this.repo.addAdhocItem(user.schemaName, vehicleId, descricao);
   }
 
+  async removeItem(user: JwtPayload, itemId: string) {
+    const existing = await this.repo.findItemById(user.schemaName, itemId);
+    if (!existing) throw new NotFoundException({ error: 'nao_encontrado', message: 'Item de checklist não encontrado.' });
+    await this.repo.removeItem(user.schemaName, itemId);
+  }
+
   async setItemConcluido(user: JwtPayload, itemId: string, concluido: boolean) {
     const updated = await this.repo.setItemConcluido(user.schemaName, itemId, concluido, user.sub);
     if (!updated) {

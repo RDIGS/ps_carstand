@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantService } from '../tenant/tenant.service';
 import { VehiclesRepository } from '../vehicles/vehicles.repository';
@@ -12,6 +12,8 @@ import { isValidNif } from '../common/utils/nif.util';
 
 @Injectable()
 export class SalesService {
+  private readonly logger = new Logger(SalesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenant: TenantService,
@@ -101,10 +103,10 @@ export class SalesService {
 
       const saleResult = await client.query(
         `INSERT INTO sales (
-           vehicle_id, comprador_nome, comprador_nif, comprador_morada, comprador_cp,
+           vehicle_id, comprador_nome, comprador_nif, comprador_morada, comprador_cp, comprador_telefone,
            comprador_identificacao_tipo, comprador_identificacao_numero, preco_final,
            vendedor_id, comissao_vendedor
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
          RETURNING *`,
         [
           dto.vehicleId,
@@ -112,6 +114,7 @@ export class SalesService {
           dto.compradorNif,
           dto.compradorMorada ?? null,
           dto.compradorCp ?? null,
+          dto.compradorTelefone ?? null,
           dto.compradorIdentificacaoTipo ?? null,
           dto.compradorIdentificacaoNumero ?? null,
           dto.precoFinal,
@@ -135,32 +138,44 @@ export class SalesService {
     }
 
     const stand = await this.prisma.stand.findUniqueOrThrow({ where: { id: user.standId } });
-    const docUrl = await this.documents.generateRegistoCompra(user.schemaName, sale.id, {
-      stand: { nome: stand.nome, nif: stand.nif, morada: stand.morada },
-      vehicle: {
-        matricula: vehicle.matricula,
-        marca: vehicle.marca,
-        modelo: vehicle.modelo,
-        versao: vehicle.versao,
-        chassis: vehicle.chassis,
-        categoria: vehicle.categoria,
-      },
-      sale: {
-        compradorNome: dto.compradorNome,
-        compradorNif: dto.compradorNif,
-        compradorMorada: dto.compradorMorada,
-        compradorCp: dto.compradorCp,
-        compradorIdentificacaoTipo: dto.compradorIdentificacaoTipo,
-        compradorIdentificacaoNumero: dto.compradorIdentificacaoNumero,
-        precoFinal: dto.precoFinal,
-        dataVenda: new Date(sale.data_venda).toLocaleDateString('pt-PT'),
-      },
-    });
 
-    await this.tenant.query(user.schemaName, `UPDATE sales SET doc_registo_compra_url = $2 WHERE id = $1`, [
-      sale.id,
-      docUrl,
-    ]);
+    // A venda em si (INSERT + veículo -> vendido) já ficou COMMIT acima —
+    // se a geração do PDF falhar aqui (ex.: Storage em baixo, carácter que o
+    // pdf-lib não sabe codificar), a venda não pode responder com um erro
+    // genérico como se nada tivesse acontecido: o carro já mudou de estado.
+    // Em vez disso devolve-se sucesso com doc_registo_compra_url = null; o
+    // erro fica só nos logs para investigação, nunca ao utilizador.
+    let docUrl: string | null = null;
+    try {
+      docUrl = await this.documents.generateRegistoCompra(user.schemaName, sale.id, {
+        stand: { nome: stand.nome, nif: stand.nif, morada: stand.morada, contacto: stand.contacto },
+        vehicle: {
+          matricula: vehicle.matricula,
+          marca: vehicle.marca,
+          modelo: vehicle.modelo,
+          versao: vehicle.versao,
+          chassis: vehicle.chassis,
+          categoria: vehicle.categoria,
+        },
+        sale: {
+          compradorNome: dto.compradorNome,
+          compradorNif: dto.compradorNif,
+          compradorMorada: dto.compradorMorada,
+          compradorCp: dto.compradorCp,
+          compradorTelefone: dto.compradorTelefone,
+          compradorIdentificacaoTipo: dto.compradorIdentificacaoTipo,
+          compradorIdentificacaoNumero: dto.compradorIdentificacaoNumero,
+          precoFinal: dto.precoFinal,
+          dataVenda: new Date(sale.data_venda).toLocaleDateString('pt-PT'),
+        },
+      });
+      await this.tenant.query(user.schemaName, `UPDATE sales SET doc_registo_compra_url = $2 WHERE id = $1`, [
+        sale.id,
+        docUrl,
+      ]);
+    } catch (err) {
+      this.logger.error(`Falha ao gerar o Registo de Compra da venda ${sale.id}`, err instanceof Error ? err.stack : err);
+    }
 
     await this.audit.log(user.schemaName, {
       entidade: 'sale',
@@ -191,7 +206,15 @@ export class SalesService {
     const client = await this.tenant.getClient(user.schemaName);
     try {
       await client.query('BEGIN');
-      await client.query(`UPDATE sales SET estado = 'revertida' WHERE id = $1`, [saleId]);
+      // O9: reverter invalida os documentos gerados (não só o estado) — os
+      // ficheiros continuam no storage (nunca apagados), mas deixam de estar
+      // ligados à venda, por isso a app deixa de os mostrar/permitir descarregar.
+      await client.query(
+        `UPDATE sales SET estado = 'revertida', doc_registo_compra_url = NULL, doc_responsabilidade_url = NULL,
+           identificacao_frente_url = NULL, identificacao_verso_url = NULL, identificacao_documento_combinado_url = NULL
+         WHERE id = $1`,
+        [saleId],
+      );
       await client.query(
         `UPDATE vehicles SET estado = 'disponivel', preco_venda_final = NULL, atualizado_em = now() WHERE id = $1`,
         [sale.vehicle_id],
@@ -208,8 +231,8 @@ export class SalesService {
       entidade: 'sale',
       entidadeId: saleId,
       acao: 'revertida',
-      valorAnterior: { estado: 'concluida' },
-      valorNovo: { estado: 'revertida' },
+      valorAnterior: { estado: 'concluida', doc_registo_compra_url: sale.doc_registo_compra_url },
+      valorNovo: { estado: 'revertida', doc_registo_compra_url: null },
       feitoPor: user.sub,
     });
 

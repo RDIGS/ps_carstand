@@ -121,6 +121,33 @@ export class VehiclesService {
     return updated;
   }
 
+  // Owner only — permite corrigir um veículo adicionado por engano. A FK de
+  // sales.vehicle_id (sem cascade) bloqueia sozinha qualquer veículo com
+  // histórico de vendas, mesmo revertidas; aqui só traduzimos esse erro do
+  // Postgres (23503) numa mensagem percetível.
+  async remove(user: JwtPayload, id: string) {
+    const vehicle = await this.findOne(user, id);
+    try {
+      await this.repo.remove(user.schemaName, id);
+    } catch (err) {
+      if ((err as { code?: string }).code === '23503') {
+        throw new BadRequestException({
+          error: 'veiculo_tem_historico',
+          message: 'Não é possível eliminar este veículo: já tem um histórico de vendas associado.',
+        });
+      }
+      throw err;
+    }
+
+    await this.audit.log(user.schemaName, {
+      entidade: 'vehicle',
+      entidadeId: id,
+      acao: 'removido',
+      valorAnterior: vehicle,
+      feitoPor: user.sub,
+    });
+  }
+
   async approve(user: JwtPayload, id: string) {
     const vehicle = await this.findOne(user, id);
     if (vehicle.estado !== 'pendente_aprovacao') {

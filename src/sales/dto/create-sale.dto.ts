@@ -1,4 +1,4 @@
-import { IsIn, IsNumber, IsOptional, IsPositive, IsString, IsUUID, MinLength } from 'class-validator';
+import { IsIn, IsNumber, IsOptional, IsPositive, IsString, IsUUID, Matches, MinLength } from 'class-validator';
 
 export class CreateSaleDto {
   @IsUUID()
@@ -16,8 +16,12 @@ export class CreateSaleDto {
   compradorMorada?: string;
 
   @IsOptional()
-  @IsString()
+  @Matches(/^\d{4}-\d{3}$/, { message: 'Código postal deve ter o formato ####-###.' })
   compradorCp?: string;
+
+  @IsOptional()
+  @IsString()
+  compradorTelefone?: string;
 
   @IsOptional()
   @IsIn(['bi', 'cc', 'titulo_residencia', 'outro'])

@@ -106,6 +106,10 @@ export class VehiclesRepository {
     return rows[0] ?? null;
   }
 
+  async remove(schemaName: string, id: string) {
+    await this.tenant.query(schemaName, `DELETE FROM vehicles WHERE id = $1`, [id]);
+  }
+
   async setEstado(schemaName: string, id: string, estado: string, aprovadoPor?: string) {
     const rows = await this.tenant.query(
       schemaName,

@@ -106,6 +106,15 @@ export class ChecklistRepository {
     return rows[0];
   }
 
+  async findItemById(schemaName: string, itemId: string) {
+    const rows = await this.tenant.query(schemaName, `SELECT * FROM vehicle_checklist_items WHERE id = $1`, [itemId]);
+    return rows[0] ?? null;
+  }
+
+  async removeItem(schemaName: string, itemId: string) {
+    await this.tenant.query(schemaName, `DELETE FROM vehicle_checklist_items WHERE id = $1`, [itemId]);
+  }
+
   async setItemConcluido(schemaName: string, itemId: string, concluido: boolean, concluidoPor: string) {
     const rows = await this.tenant.query(
       schemaName,
