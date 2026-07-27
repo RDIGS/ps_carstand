@@ -37,6 +37,9 @@ services:
         sync: false
       - key: SUPABASE_STORAGE_BUCKET
         value: documentos
+      # Backup automático da BD ao arrancar o servidor (src/backup/backup.service.ts).
+      - key: SUPABASE_BACKUP_BUCKET
+        value: backups
       - key: CRAWLER_CACHE_TTL_HOURS
         value: "48"
       - key: GRACE_PERIOD_DAYS

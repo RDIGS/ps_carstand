@@ -4,6 +4,7 @@ dist/
 *.log
 coverage/
 /storage/
+/backups/
 *.jpg
 *.jpeg
 *.png

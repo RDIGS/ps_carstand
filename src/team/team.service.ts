@@ -77,6 +77,44 @@ export class TeamService {
     return updated;
   }
 
+  // Sem envio de email (mesmo motivo do invite): o owner define uma password
+  // temporária nova para um vendedor que se esqueceu da sua e partilha-a por
+  // fora da app. Não cobre o caso do próprio owner se esquecer — nesse
+  // caso a app só mostra um contacto de suporte (ver login_screen.dart).
+  // Restrito a 'vendedor' de propósito: um owner não devia conseguir tirar
+  // o acesso a outro owner só resetando-lhe a password.
+  async resetPassword(user: JwtPayload, memberId: string) {
+    const membership = await this.prisma.standMember.findFirst({ where: { id: memberId, standId: user.standId } });
+    if (!membership) throw new NotFoundException({ error: 'nao_encontrado', message: 'Membro não encontrado.' });
+    if (membership.role !== 'vendedor') {
+      throw new BadRequestException({
+        error: 'so_vendedor',
+        message: 'Só é possível repor a password de um vendedor. Para um owner, contacta o suporte.',
+      });
+    }
+
+    const tempPassword = randomBytes(6).toString('base64url');
+    await this.prisma.person.update({
+      where: { id: membership.personId },
+      data: { passwordHash: await hashPassword(tempPassword) },
+    });
+    // Força logout em todos os dispositivos — mesma lógica usada quando se
+    // deteta roubo de refresh token (secção 21, auth.service.ts).
+    await this.prisma.refreshToken.updateMany({
+      where: { personId: membership.personId, revogado: false },
+      data: { revogado: true },
+    });
+
+    await this.audit.log(user.schemaName, {
+      entidade: 'stand_member',
+      entidadeId: memberId,
+      acao: 'password_reposta',
+      feitoPor: user.sub,
+    });
+
+    return { tempPassword };
+  }
+
   async remove(user: JwtPayload, memberId: string) {
     const membership = await this.prisma.standMember.findFirst({ where: { id: memberId, standId: user.standId } });
     if (!membership) throw new NotFoundException({ error: 'nao_encontrado', message: 'Membro não encontrado.' });

@@ -28,6 +28,11 @@ export class TeamController {
     return this.teamService.update(user, memberId, dto);
   }
 
+  @Post(':memberId/reset-password')
+  resetPassword(@CurrentUser() user: JwtPayload, @Param('memberId', ParseUUIDPipe) memberId: string) {
+    return this.teamService.resetPassword(user, memberId);
+  }
+
   @Delete(':memberId')
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@CurrentUser() user: JwtPayload, @Param('memberId', ParseUUIDPipe) memberId: string) {

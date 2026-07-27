@@ -7,6 +7,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
 import { TenantModule } from './tenant/tenant.module';
 import { StorageModule } from './storage/storage.module';
+import { BackupModule } from './backup/backup.module';
 
 import { AuthModule } from './auth/auth.module';
 import { AppVersionModule } from './app-version/app-version.module';
@@ -36,6 +37,7 @@ import { StandThrottlerGuard } from './common/guards/stand-throttler.guard';
     PrismaModule,
     TenantModule,
     StorageModule,
+    BackupModule,
 
     AuthModule,
     AppVersionModule,
