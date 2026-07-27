@@ -10,8 +10,13 @@ export class LeadsController {
   constructor(private readonly leadsService: LeadsService) {}
 
   @Get()
-  list(@CurrentUser() user: JwtPayload, @Query('estado') estado?: string) {
-    return this.leadsService.list(user, estado);
+  list(
+    @CurrentUser() user: JwtPayload,
+    @Query('estado') estado?: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '50',
+  ) {
+    return this.leadsService.list(user, estado, Number(page), Number(limit));
   }
 
   @Get(':id')

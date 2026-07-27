@@ -11,8 +11,14 @@ import { JwtPayload } from '../common/types/jwt-payload.interface';
 export class LeadsService {
   constructor(private readonly repo: LeadsRepository) {}
 
-  list(user: JwtPayload, estado?: string) {
-    return this.repo.list(user.schemaName, estado);
+  async list(user: JwtPayload, estado: string | undefined, page: number, limit: number) {
+    const { rows, totalItems } = await this.repo.list(user.schemaName, estado, page, limit);
+    return {
+      data: rows,
+      page,
+      total_pages: Math.max(1, Math.ceil(totalItems / limit)),
+      total_items: totalItems,
+    };
   }
 
   async findOne(user: JwtPayload, id: string) {

@@ -6,18 +6,26 @@ import { CreateLeadDto } from './dto/create-lead.dto';
 export class LeadsRepository {
   constructor(private readonly tenant: TenantService) {}
 
-  async list(schemaName: string, estado?: string) {
-    if (estado) {
-      return this.tenant.query(
-        schemaName,
-        `SELECT * FROM leads WHERE estado = $1 ORDER BY proximo_contacto ASC NULLS LAST, criado_em DESC`,
-        [estado],
-      );
-    }
-    return this.tenant.query(
+  async list(schemaName: string, estado: string | undefined, page: number, limit: number) {
+    const offset = (page - 1) * limit;
+    const whereClause = estado ? `WHERE estado = $1` : '';
+    const params = estado ? [estado] : [];
+
+    const rows = await this.tenant.query(
       schemaName,
-      `SELECT * FROM leads ORDER BY proximo_contacto ASC NULLS LAST, criado_em DESC`,
+      `SELECT * FROM leads ${whereClause}
+       ORDER BY proximo_contacto ASC NULLS LAST, criado_em DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset],
     );
+
+    const [{ count }] = await this.tenant.query<{ count: string }>(
+      schemaName,
+      `SELECT COUNT(*)::text AS count FROM leads ${whereClause}`,
+      params,
+    );
+
+    return { rows, totalItems: Number(count) };
   }
 
   async findById(schemaName: string, id: string) {

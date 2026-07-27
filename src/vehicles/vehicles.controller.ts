@@ -194,6 +194,10 @@ export class VehiclesController {
   }
 
   @Post(':id/photos')
+  // Sem isto, só o limite genérico (100/min/stand) protegia o Storage — dava
+  // para martelar uploads de 8MB a esse ritmo sem limite dedicado nenhum,
+  // ao contrário de todos os outros endpoints de upload (DUA, identidade).
+  @Throttle({ default: { limit: 60, ttl: 3_600_000 } })
   @UseInterceptors(FileInterceptor('foto', { storage: memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } }))
   addPhoto(
     @CurrentUser() user: JwtPayload,
