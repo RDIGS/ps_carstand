@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { ValidateTokenDto } from './dto/validate-token.dto';
 import { LoginDto } from './dto/login.dto';
@@ -16,6 +17,10 @@ export class AuthController {
 
   @Public()
   @Post('validate-token')
+  // Sem isto, o limite genérico (100/min/IP) deixava adivinhar tokens de
+  // stand a um ritmo incomodamente alto — este endpoint não precisa de
+  // tanto tráfego legítimo (só corre 1x por dispositivo/token novo).
+  @Throttle({ default: { limit: 20, ttl: 300_000 } })
   @HttpCode(HttpStatus.OK)
   validateToken(@Body() dto: ValidateTokenDto) {
     return this.authService.validateToken(dto.token);
@@ -23,6 +28,9 @@ export class AuthController {
 
   @Public()
   @Post('login')
+  // Mesma razão: o limite genérico permitia ~100 tentativas de password/min
+  // contra o mesmo email a partir de 1 IP — força bruta online demasiado fácil.
+  @Throttle({ default: { limit: 10, ttl: 900_000 } })
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto) {
     const result = await this.authService.login(dto.email, dto.password, dto.standId);

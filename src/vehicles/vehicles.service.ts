@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehiclesRepository } from './vehicles.repository';
 import { AuditService } from '../audit/audit.service';
@@ -8,6 +9,10 @@ import { UpdateVehicleDto, CAMPOS_EDITAVEIS_POR_VENDEDOR } from './dto/update-ve
 import { JwtPayload } from '../common/types/jwt-payload.interface';
 
 const ESTADOS_VISIVEIS_VENDEDOR = ['disponivel', 'reservado', 'pendente_aprovacao'];
+
+// Aviso proativo (não bloqueante, mesmo padrão da subscrição/versão): sinal
+// simples de que há stock parado a precisar de atenção (preço, promoção).
+const DIAS_STOCK_PARADO = 60;
 
 @Injectable()
 export class VehiclesService {
@@ -34,6 +39,11 @@ export class VehiclesService {
       total_pages: Math.max(1, Math.ceil(totalItems / limit)),
       total_items: totalItems,
     };
+  }
+
+  async getStockAlerts(user: JwtPayload) {
+    const veiculosParados = await this.repo.countStockParado(user.schemaName, DIAS_STOCK_PARADO);
+    return { veiculos_parados: veiculosParados, limite_dias: DIAS_STOCK_PARADO };
   }
 
   async findOne(user: JwtPayload, id: string) {
@@ -267,6 +277,32 @@ export class VehiclesService {
     ]);
 
     return [frentePhoto, versoPhoto];
+  }
+
+  // Galeria de fotos do veículo (distinta das fotos do DUA) — usada em
+  // anúncios/banners, nunca a mesma coisa que a digitalização do documento.
+  async listGalleryPhotos(user: JwtPayload, vehicleId: string) {
+    await this.findOne(user, vehicleId);
+    return this.repo.listPhotos(user.schemaName, vehicleId, 'foto_viatura');
+  }
+
+  async addGalleryPhoto(user: JwtPayload, vehicleId: string, foto: Buffer) {
+    await this.findOne(user, vehicleId);
+    const url = await this.storage.upload(
+      `${user.schemaName}/vehicles/${vehicleId}/gallery/${randomUUID()}.jpg`,
+      foto,
+      'image/jpeg',
+    );
+    return this.repo.addPhoto(user.schemaName, vehicleId, url, 'foto_viatura');
+  }
+
+  async removeGalleryPhoto(user: JwtPayload, vehicleId: string, photoId: string) {
+    await this.findOne(user, vehicleId);
+    const existing = await this.repo.findPhotoById(user.schemaName, vehicleId, photoId);
+    if (!existing || existing.tipo !== 'foto_viatura') {
+      throw new NotFoundException({ error: 'nao_encontrado', message: 'Foto não encontrada.' });
+    }
+    await this.repo.removePhoto(user.schemaName, photoId);
   }
 
   private toSnakeCase(camel: string): string {

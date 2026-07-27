@@ -171,3 +171,23 @@ CREATE TABLE audit_log (
 );
 
 CREATE INDEX idx_audit_log_entidade ON audit_log(entidade, entidade_id);
+
+-- CRM básico de interessados/leads: acompanhar quem mostrou interesse num
+-- veículo (ou em geral) e o estado do contacto, antes de chegar a uma venda.
+CREATE TABLE leads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  vehicle_id UUID REFERENCES vehicles(id) ON DELETE SET NULL,
+  nome TEXT NOT NULL,
+  telefone TEXT,
+  email TEXT,
+  origem TEXT CHECK (origem IN ('telefone','whatsapp','presencial','standvirtual','olx','custojusto','outro')),
+  estado TEXT DEFAULT 'novo' CHECK (estado IN ('novo','contactado','agendado','convertido','perdido')),
+  notas TEXT,
+  vendedor_id UUID,
+  proximo_contacto DATE,
+  criado_em TIMESTAMPTZ DEFAULT now(),
+  atualizado_em TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_leads_vehicle ON leads(vehicle_id);
+CREATE INDEX idx_leads_estado ON leads(estado);

@@ -10,11 +10,12 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Throttle } from '@nestjs/throttler';
 import { VehiclesService } from './vehicles.service';
@@ -29,6 +30,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { JwtPayload } from '../common/types/jwt-payload.interface';
+import { assertIsImageBuffer } from '../common/utils/image-signature.util';
 
 @Controller('vehicles')
 @UseGuards(RolesGuard)
@@ -47,6 +49,13 @@ export class VehiclesController {
     @Query('limit') limit = '20',
   ) {
     return this.vehiclesService.list(user, estado, Number(page), Number(limit));
+  }
+
+  // Antes de ':id' de propósito — caso contrário "alerts" seria interpretado
+  // como um :id e rejeitado pelo ParseUUIDPipe do findOne.
+  @Get('alerts')
+  getAlerts(@CurrentUser() user: JwtPayload) {
+    return this.vehiclesService.getStockAlerts(user);
   }
 
   @Get(':id')
@@ -76,6 +85,8 @@ export class VehiclesController {
     if (!frente || !verso) {
       return { error: 'campos_em_falta', message: 'É necessário enviar foto_frente e foto_verso.' };
     }
+    assertIsImageBuffer(frente.buffer);
+    assertIsImageBuffer(verso.buffer);
     return this.duaExtraction.extract(frente.buffer.toString('base64'), verso.buffer.toString('base64'));
   }
 
@@ -172,7 +183,38 @@ export class VehiclesController {
     if (!frente || !verso) {
       return { error: 'campos_em_falta', message: 'É necessário enviar foto_frente e foto_verso.' };
     }
+    assertIsImageBuffer(frente.buffer);
+    assertIsImageBuffer(verso.buffer);
     return this.vehiclesService.addDuaPhotos(user, id, frente.buffer, verso.buffer);
+  }
+
+  @Get(':id/photos')
+  listPhotos(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {
+    return this.vehiclesService.listGalleryPhotos(user, id);
+  }
+
+  @Post(':id/photos')
+  @UseInterceptors(FileInterceptor('foto', { storage: memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } }))
+  addPhoto(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() foto?: Express.Multer.File,
+  ) {
+    if (!foto) {
+      return { error: 'campos_em_falta', message: 'É necessário enviar uma foto.' };
+    }
+    assertIsImageBuffer(foto.buffer);
+    return this.vehiclesService.addGalleryPhoto(user, id, foto.buffer);
+  }
+
+  @Delete(':id/photos/:photoId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removePhoto(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('photoId', ParseUUIDPipe) photoId: string,
+  ) {
+    return this.vehiclesService.removeGalleryPhoto(user, id, photoId);
   }
 
   // "atualizar=true" ignora a cache e volta a fazer scraping às fontes —

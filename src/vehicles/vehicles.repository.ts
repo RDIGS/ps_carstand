@@ -38,6 +38,16 @@ export class VehiclesRepository {
     return { rows, totalItems: Number(count) };
   }
 
+  async countStockParado(schemaName: string, diasLimite: number) {
+    const [{ count }] = await this.tenant.query<{ count: string }>(
+      schemaName,
+      `SELECT COUNT(*)::text AS count FROM vehicles
+       WHERE estado IN ('disponivel','reservado') AND (CURRENT_DATE - data_entrada_stock) > $1`,
+      [diasLimite],
+    );
+    return Number(count);
+  }
+
   async findById(schemaName: string, id: string) {
     const rows = await this.tenant.query(schemaName, `SELECT * FROM vehicles WHERE id = $1`, [id]);
     return rows[0] ?? null;
@@ -177,5 +187,26 @@ export class VehiclesRepository {
       [vehicleId, url, tipo],
     );
     return rows[0];
+  }
+
+  async listPhotos(schemaName: string, vehicleId: string, tipo: string) {
+    return this.tenant.query(
+      schemaName,
+      `SELECT * FROM vehicle_photos WHERE vehicle_id = $1 AND tipo = $2 ORDER BY criado_em ASC`,
+      [vehicleId, tipo],
+    );
+  }
+
+  async findPhotoById(schemaName: string, vehicleId: string, photoId: string) {
+    const rows = await this.tenant.query(
+      schemaName,
+      `SELECT * FROM vehicle_photos WHERE id = $1 AND vehicle_id = $2`,
+      [photoId, vehicleId],
+    );
+    return rows[0] ?? null;
+  }
+
+  async removePhoto(schemaName: string, photoId: string) {
+    await this.tenant.query(schemaName, `DELETE FROM vehicle_photos WHERE id = $1`, [photoId]);
   }
 }

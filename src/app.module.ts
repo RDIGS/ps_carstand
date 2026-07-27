@@ -23,6 +23,7 @@ import { OcrModule } from './ocr/ocr.module';
 import { CrawlersModule } from './crawlers/crawlers.module';
 import { DocumentsModule } from './documents/documents.module';
 import { SuggestionsModule } from './suggestions/suggestions.module';
+import { LeadsModule } from './leads/leads.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { StandThrottlerGuard } from './common/guards/stand-throttler.guard';
@@ -53,6 +54,7 @@ import { StandThrottlerGuard } from './common/guards/stand-throttler.guard';
     FinanceModule,
     AuditModule,
     SuggestionsModule,
+    LeadsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

@@ -19,6 +19,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { JwtPayload } from '../common/types/jwt-payload.interface';
+import { assertIsImageBuffer } from '../common/utils/image-signature.util';
 
 const FOTOS_INTERCEPTOR = FileFieldsInterceptor(
   [
@@ -52,6 +53,8 @@ export class SalesController {
     if (!frente || !verso) {
       return { error: 'campos_em_falta', message: 'É necessário enviar foto_frente e foto_verso.' };
     }
+    assertIsImageBuffer(frente.buffer);
+    assertIsImageBuffer(verso.buffer);
     return this.salesService.extractIdentity(frente.buffer.toString('base64'), verso.buffer.toString('base64'));
   }
 
@@ -71,6 +74,8 @@ export class SalesController {
     if (!frente || !verso) {
       return { error: 'campos_em_falta', message: 'É necessário enviar foto_frente e foto_verso.' };
     }
+    assertIsImageBuffer(frente.buffer);
+    assertIsImageBuffer(verso.buffer);
     return this.salesService.attachIdentityDocuments(user, id, tipoDocumento, frente.buffer, verso.buffer);
   }
 
