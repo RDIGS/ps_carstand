@@ -163,7 +163,13 @@ export class VehiclesService {
     if (vehicle.estado !== 'pendente_aprovacao') {
       throw new BadRequestException({ error: 'estado_invalido', message: 'Este veículo não está pendente de aprovação.' });
     }
-    const updated = await this.repo.setEstado(user.schemaName, id, 'disponivel', user.sub);
+    const updated = await this.repo.setEstado(user.schemaName, id, 'disponivel', {
+      estadoEsperado: 'pendente_aprovacao',
+      aprovadoPor: user.sub,
+    });
+    if (!updated) {
+      throw new BadRequestException({ error: 'estado_invalido', message: 'Este veículo não está pendente de aprovação.' });
+    }
     await this.audit.log(user.schemaName, { entidade: 'vehicle', entidadeId: id, acao: 'aprovado', valorNovo: updated, feitoPor: user.sub });
     return updated;
   }
@@ -173,7 +179,13 @@ export class VehiclesService {
     if (vehicle.estado !== 'pendente_aprovacao') {
       throw new BadRequestException({ error: 'estado_invalido', message: 'Este veículo não está pendente de aprovação.' });
     }
-    const updated = await this.repo.setEstado(user.schemaName, id, 'rejeitado', user.sub);
+    const updated = await this.repo.setEstado(user.schemaName, id, 'rejeitado', {
+      estadoEsperado: 'pendente_aprovacao',
+      aprovadoPor: user.sub,
+    });
+    if (!updated) {
+      throw new BadRequestException({ error: 'estado_invalido', message: 'Este veículo não está pendente de aprovação.' });
+    }
     await this.audit.log(user.schemaName, { entidade: 'vehicle', entidadeId: id, acao: 'rejeitado', valorNovo: updated, feitoPor: user.sub });
     return updated;
   }
@@ -182,6 +194,7 @@ export class VehiclesService {
     const vehicle = await this.findOne(user, id);
     const estadoAtual = vehicle.estado;
     const novoEstado = reservado ? 'reservado' : 'disponivel';
+    const estadoEsperado = reservado ? 'disponivel' : 'reservado';
 
     const transicaoValida =
       (reservado && estadoAtual === 'disponivel') || (!reservado && estadoAtual === 'reservado');
@@ -192,7 +205,13 @@ export class VehiclesService {
       });
     }
 
-    const updated = await this.repo.setEstado(user.schemaName, id, novoEstado);
+    const updated = await this.repo.setEstado(user.schemaName, id, novoEstado, { estadoEsperado });
+    if (!updated) {
+      throw new BadRequestException({
+        error: 'estado_invalido',
+        message: `Não é possível marcar como ${novoEstado} a partir de "${estadoAtual}".`,
+      });
+    }
     await this.audit.log(user.schemaName, {
       entidade: 'vehicle',
       entidadeId: id,

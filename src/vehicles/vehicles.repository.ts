@@ -120,12 +120,25 @@ export class VehiclesRepository {
     await this.tenant.query(schemaName, `DELETE FROM vehicles WHERE id = $1`, [id]);
   }
 
-  async setEstado(schemaName: string, id: string, estado: string, aprovadoPor?: string) {
+  // "estadoEsperado" é a garantia real contra corridas (2 pedidos a mudar o
+  // mesmo veículo quase ao mesmo tempo) — sem isto, o SELECT que o serviço
+  // faz antes de chamar isto não protege nada sozinho: os dois pedidos podem
+  // passar a verificação e só um dos UPDATEs devia ter tido efeito.
+  async setEstado(schemaName: string, id: string, estado: string, opts: { estadoEsperado?: string; aprovadoPor?: string } = {}) {
+    const params: unknown[] = [id, estado];
+    let condicaoEstado = '';
+    if (opts.estadoEsperado) {
+      params.push(opts.estadoEsperado);
+      condicaoEstado = ` AND estado = $${params.length}`;
+    }
+    params.push(opts.aprovadoPor ?? null);
+    const aprovadoPorIdx = params.length;
+
     const rows = await this.tenant.query(
       schemaName,
-      `UPDATE vehicles SET estado = $2, aprovado_por = COALESCE($3, aprovado_por), atualizado_em = now()
-       WHERE id = $1 RETURNING *`,
-      [id, estado, aprovadoPor ?? null],
+      `UPDATE vehicles SET estado = $2, aprovado_por = COALESCE($${aprovadoPorIdx}, aprovado_por), atualizado_em = now()
+       WHERE id = $1${condicaoEstado} RETURNING *`,
+      params,
     );
     return rows[0] ?? null;
   }

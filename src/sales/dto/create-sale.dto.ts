@@ -1,4 +1,4 @@
-import { IsIn, IsNumber, IsOptional, IsPositive, IsString, IsUUID, Matches, MinLength } from 'class-validator';
+import { IsIn, IsNumber, IsOptional, IsPositive, IsString, IsUUID, Matches, Min, MinLength } from 'class-validator';
 
 export class CreateSaleDto {
   @IsUUID()
@@ -37,5 +37,6 @@ export class CreateSaleDto {
 
   @IsOptional()
   @IsNumber()
+  @Min(0)
   comissaoVendedor?: number;
 }

@@ -87,6 +87,13 @@ export class SalesService {
         campo: 'compradorNif',
       });
     }
+    if (dto.comissaoVendedor != null && dto.comissaoVendedor > dto.precoFinal) {
+      throw new BadRequestException({
+        error: 'comissao_invalida',
+        message: 'A comissão não pode ser maior do que o preço final.',
+        campo: 'comissaoVendedor',
+      });
+    }
 
     const vehicle = await this.vehiclesRepo.findById(user.schemaName, dto.vehicleId);
     if (!vehicle) {
@@ -124,10 +131,19 @@ export class SalesService {
       );
       sale = saleResult.rows[0];
 
-      await client.query(
-        `UPDATE vehicles SET estado = 'vendido', preco_venda_final = $2, atualizado_em = now() WHERE id = $1`,
+      // A verificação de vehicle.estado acima (antes de abrir a transação) é
+      // só um atalho para falhar cedo — a garantia real tem de estar aqui,
+      // dentro da transação: sem o "AND estado != 'vendido'", duas pessoas a
+      // vender o mesmo carro quase ao mesmo tempo passavam as duas na
+      // verificação e criavam 2 vendas "concluídas" para o mesmo veículo.
+      const vehicleUpdate = await client.query(
+        `UPDATE vehicles SET estado = 'vendido', preco_venda_final = $2, atualizado_em = now()
+         WHERE id = $1 AND estado != 'vendido'`,
         [dto.vehicleId, dto.precoFinal],
       );
+      if (vehicleUpdate.rowCount === 0) {
+        throw new BadRequestException({ error: 'estado_invalido', message: 'Este veículo já foi vendido.' });
+      }
 
       await client.query('COMMIT');
     } catch (err) {
@@ -209,12 +225,17 @@ export class SalesService {
       // O9: reverter invalida os documentos gerados (não só o estado) — os
       // ficheiros continuam no storage (nunca apagados), mas deixam de estar
       // ligados à venda, por isso a app deixa de os mostrar/permitir descarregar.
-      await client.query(
+      // "AND estado = 'concluida'" é a garantia real contra 2 reverts em
+      // paralelo — a verificação em cima (antes da transação) é só atalho.
+      const saleUpdate = await client.query(
         `UPDATE sales SET estado = 'revertida', doc_registo_compra_url = NULL, doc_responsabilidade_url = NULL,
            identificacao_frente_url = NULL, identificacao_verso_url = NULL, identificacao_documento_combinado_url = NULL
-         WHERE id = $1`,
+         WHERE id = $1 AND estado = 'concluida'`,
         [saleId],
       );
+      if (saleUpdate.rowCount === 0) {
+        throw new BadRequestException({ error: 'estado_invalido', message: 'Esta venda já foi revertida.' });
+      }
       await client.query(
         `UPDATE vehicles SET estado = 'disponivel', preco_venda_final = NULL, atualizado_em = now() WHERE id = $1`,
         [sale.vehicle_id],

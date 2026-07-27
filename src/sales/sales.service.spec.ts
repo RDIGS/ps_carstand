@@ -42,7 +42,11 @@ describe('SalesService', () => {
             rows: [{ id: 'sale-1', data_venda: '2026-01-01', estado: 'concluida' }],
           });
         }
-        return Promise.resolve({ rows: [] });
+        // rowCount: 1 simula 1 linha afetada (o caminho feliz) — os testes de
+        // corrida sobrepõem isto para 0 (nenhuma linha afetada, condição
+        // "AND estado = ..." não bateu certo porque outro pedido já mudou o
+        // estado entretanto).
+        return Promise.resolve({ rows: [], rowCount: 1 });
       }),
       release: jest.fn(),
     };
@@ -112,6 +116,26 @@ describe('SalesService', () => {
       );
     });
 
+    // Regressão: antes desta correção, a verificação de vehicle.estado
+    // acontecia numa query separada, antes de abrir a transação — se duas
+    // pessoas vendessem o mesmo carro quase ao mesmo tempo, as duas passavam
+    // na verificação e criavam 2 vendas "concluídas" para o mesmo veículo.
+    it('rejeita (e reverte a transação) se outra venda já tiver marcado o veículo vendido entretanto', async () => {
+      dbClient.query.mockImplementation((sql: string) => {
+        if (sql.startsWith('INSERT INTO sales')) {
+          return Promise.resolve({ rows: [{ id: 'sale-1', data_venda: '2026-01-01', estado: 'concluida' }] });
+        }
+        if (sql.includes("estado = 'vendido'")) {
+          return Promise.resolve({ rows: [], rowCount: 0 });
+        }
+        return Promise.resolve({ rows: [], rowCount: 1 });
+      });
+
+      await expect(service.create(USER, criarDto())).rejects.toThrow(BadRequestException);
+      expect(dbClient.query).toHaveBeenCalledWith('ROLLBACK');
+      expect(dbClient.query).not.toHaveBeenCalledWith('COMMIT');
+    });
+
     it('reverte a transação (ROLLBACK) se o INSERT/UPDATE falhar', async () => {
       dbClient.query.mockImplementation((sql: string) => {
         if (sql.startsWith('INSERT INTO sales')) throw new Error('falha de BD');
@@ -152,6 +176,21 @@ describe('SalesService', () => {
         expect.arrayContaining(['vehicle-1']),
       );
       expect(audit.log).toHaveBeenCalledWith(USER.schemaName, expect.objectContaining({ acao: 'revertida' }));
+    });
+
+    // Mesmo tipo de regressão do create(): se dois pedidos de revert
+    // chegarem quase ao mesmo tempo, só um pode ter efeito.
+    it('rejeita se outro pedido já tiver revertido a venda entretanto', async () => {
+      tenant.query.mockResolvedValueOnce([
+        { id: 'sale-1', estado: 'concluida', vehicle_id: 'vehicle-1', doc_registo_compra_url: null },
+      ]);
+      dbClient.query.mockImplementation((sql: string) => {
+        if (sql.includes("estado = 'revertida'")) return Promise.resolve({ rows: [], rowCount: 0 });
+        return Promise.resolve({ rows: [], rowCount: 1 });
+      });
+
+      await expect(service.revert(USER, 'sale-1')).rejects.toThrow(BadRequestException);
+      expect(dbClient.query).toHaveBeenCalledWith('ROLLBACK');
     });
   });
 });
