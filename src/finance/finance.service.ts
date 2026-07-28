@@ -149,131 +149,146 @@ export class FinanceService {
       AND ($5::text IS NULL OR v.modelo ILIKE $5)
     `;
 
-    const [
-      margemPorVeiculo,
+    // Corre as 8 queries sequencialmente numa única ligação em vez de
+    // Promise.all (uma ligação por query em paralelo) — o pooler do Supabase
+    // está limitado a 15 ligações no total, partilhadas com tudo o resto
+    // (produção, sessões locais, cron de backup); 8 ligações simultâneas só
+    // para este endpoint era o suficiente para esgotar o pool sozinho e
+    // devolver EMAXCONNSESSION mesmo sem grande concorrência real. Perde-se
+    // algum paralelismo, mas o schema de tenant é pequeno — o custo real é
+    // baixo.
+    const client = await this.tenant.getClient(schemaName);
+    let margemPorVeiculo,
       margemPorMarcaModelo,
       rankingVendedores,
       cashflowRows,
       desvioRows,
       mercadoRows,
       despesasGeraisPorCategoria,
-      despesasVeiculosPorCategoria,
-    ] = await Promise.all([
-        this.tenant.query(
-          schemaName,
-          `SELECT v.id, v.matricula, v.marca, v.modelo,
-                  s.preco_final, v.preco_compra,
-                  COALESCE((SELECT SUM(valor) FROM vehicle_expenses e WHERE e.vehicle_id = v.id), 0) AS despesas,
-                  (s.preco_final - v.preco_compra - COALESCE((SELECT SUM(valor) FROM vehicle_expenses e WHERE e.vehicle_id = v.id), 0)) AS margem_real,
-                  (s.data_venda - v.data_entrada_stock) AS dias_em_stock
-           FROM sales s
-           JOIN vehicles v ON v.id = s.vehicle_id
-           WHERE s.estado = 'concluida' AND s.data_venda BETWEEN $1 AND $2
-           ${filtroVendedorMarcaModelo}
-           ORDER BY s.data_venda DESC`,
-          filtroParams,
-        ),
-        this.tenant.query(
-          schemaName,
-          `SELECT v.marca, v.modelo,
-                  AVG(s.preco_final - v.preco_compra - COALESCE((SELECT SUM(valor) FROM vehicle_expenses e WHERE e.vehicle_id = v.id), 0)) AS margem_media,
-                  COUNT(*) AS num_vendas
-           FROM sales s
-           JOIN vehicles v ON v.id = s.vehicle_id
-           WHERE s.estado = 'concluida' AND s.data_venda BETWEEN $1 AND $2
-           ${filtroVendedorMarcaModelo}
-           GROUP BY v.marca, v.modelo
-           ORDER BY margem_media DESC`,
-          filtroParams,
-        ),
-        // people vive na DB Central (schema "public"), não no schema do
-        // tenant — join cross-schema com nome totalmente qualificado, que
-        // ignora o search_path definido pelo TenantService (testado contra
-        // o Postgres real).
-        this.tenant.query(
-          schemaName,
-          `SELECT s.vendedor_id, p.nome AS vendedor_nome,
-                  COUNT(*) AS num_vendas, SUM(s.preco_final) AS valor_total, SUM(COALESCE(s.comissao_vendedor, 0)) AS comissao_total
-           FROM sales s
-           JOIN vehicles v ON v.id = s.vehicle_id
-           LEFT JOIN public.people p ON p.id = s.vendedor_id
-           WHERE s.estado = 'concluida' AND s.data_venda BETWEEN $1 AND $2
-           ${filtroVendedorMarcaModelo}
-           GROUP BY s.vendedor_id, p.nome
-           ORDER BY valor_total DESC`,
-          filtroParams,
-        ),
-        // Cashflow (corrigido 2026-07-27): usa sempre a data REAL do
-        // movimento (data do lançamento / data de entrada em stock / data
-        // da despesa), nunca a data da venda — antes disto, comprar um
-        // carro em janeiro e vendê-lo em março aparecia como despesa de
-        // março, desalinhando o KPI sempre que o carro fica em stock mais
-        // de um mês (caso normal do negócio). Nunca filtrado por
-        // vendedor/marca/modelo — é sempre o cashflow do stand todo.
-        this.tenant.query<{ receitas: string; despesas_gerais: string; vendas: string; despesas_veiculos: string; compras: string }>(
-          schemaName,
-          `SELECT
-             COALESCE((SELECT SUM(valor) FROM finance_entries WHERE tipo = 'receita' AND data BETWEEN $1 AND $2), 0) AS receitas,
-             COALESCE((SELECT SUM(valor) FROM finance_entries WHERE tipo = 'despesa' AND data BETWEEN $1 AND $2), 0) AS despesas_gerais,
-             COALESCE((SELECT SUM(preco_final) FROM sales WHERE estado = 'concluida' AND data_venda BETWEEN $1 AND $2), 0) AS vendas,
-             COALESCE((SELECT SUM(valor) FROM vehicle_expenses WHERE data BETWEEN $1 AND $2), 0) AS despesas_veiculos,
-             COALESCE((SELECT SUM(preco_compra) FROM vehicles WHERE data_entrada_stock BETWEEN $1 AND $2), 0) AS compras`,
-          [inicio, fim],
-        ),
-        this.tenant.query<{ desvio_medio: string }>(
-          schemaName,
-          `SELECT AVG(preco_final - v.preco_venda_recomendado) AS desvio_medio
-           FROM sales s JOIN vehicles v ON v.id = s.vehicle_id
-           WHERE s.estado = 'concluida' AND s.data_venda BETWEEN $1 AND $2
-           ${filtroVendedorMarcaModelo}`,
-          filtroParams,
-        ),
-        this.tenant.query<{ diferenca_media: string }>(
-          schemaName,
-          `SELECT AVG(s.preco_final - m.preco_medio) AS diferenca_media
-           FROM sales s
-           JOIN vehicles v ON v.id = s.vehicle_id
-           JOIN LATERAL (
-             SELECT AVG(preco_medio) AS preco_medio FROM market_estimates me
-             WHERE me.vehicle_id = v.id AND me.consultado_em <= s.data_venda + INTERVAL '1 day'
-           ) m ON true
-           WHERE s.estado = 'concluida' AND s.data_venda BETWEEN $1 AND $2 AND m.preco_medio IS NOT NULL
-           ${filtroVendedorMarcaModelo}`,
-          filtroParams,
-        ),
-        // Despesas GERAIS da empresa (renda, salários, marketing, ...) —
-        // nada a ver com veículos. Pedido explícito do utilizador: os dois
-        // tipos de despesa (gerais vs. por veículo) têm de ficar sempre
-        // visíveis em separado, nunca só somados escondidos no cashflow.
-        this.tenant.query<{ categoria: string | null; total: string }>(
-          schemaName,
-          `SELECT categoria, SUM(valor) AS total
-           FROM finance_entries
-           WHERE tipo = 'despesa' AND data BETWEEN $1 AND $2
-           GROUP BY categoria
-           ORDER BY total DESC`,
-          [inicio, fim],
-        ),
-        // Despesas POR VEÍCULO (reparação, transporte, legalização, limpeza)
-        // — estas sim respeitam marca/modelo (não vendedor, despesa não é
-        // atribuível a quem vendeu o carro).
-        this.tenant.query<{ categoria: string | null; total: string }>(
-          schemaName,
-          `SELECT e.categoria, SUM(e.valor) AS total
-           FROM vehicle_expenses e
-           JOIN vehicles v ON v.id = e.vehicle_id
-           WHERE e.data BETWEEN $1 AND $2
-           -- $3 (vendedorId) não se aplica aqui de propósito (despesa não é
-           -- atribuível a quem vendeu o carro) — a referência a ::uuid serve
-           -- só para o Postgres conseguir inferir o tipo do parâmetro.
-           AND ($3::uuid IS NULL OR TRUE)
-           AND ($4::text IS NULL OR v.marca ILIKE $4)
-           AND ($5::text IS NULL OR v.modelo ILIKE $5)
-           GROUP BY e.categoria
-           ORDER BY total DESC`,
-          filtroParams,
-        ),
-      ]);
+      despesasVeiculosPorCategoria;
+    try {
+      ({ rows: margemPorVeiculo } = await client.query(
+        `SELECT v.id, v.matricula, v.marca, v.modelo,
+                s.preco_final, v.preco_compra,
+                COALESCE((SELECT SUM(valor) FROM vehicle_expenses e WHERE e.vehicle_id = v.id), 0) AS despesas,
+                (s.preco_final - v.preco_compra - COALESCE((SELECT SUM(valor) FROM vehicle_expenses e WHERE e.vehicle_id = v.id), 0)) AS margem_real,
+                (s.data_venda - v.data_entrada_stock) AS dias_em_stock
+         FROM sales s
+         JOIN vehicles v ON v.id = s.vehicle_id
+         WHERE s.estado = 'concluida' AND s.data_venda BETWEEN $1 AND $2
+         ${filtroVendedorMarcaModelo}
+         ORDER BY s.data_venda DESC`,
+        filtroParams,
+      ));
+
+      ({ rows: margemPorMarcaModelo } = await client.query(
+        `SELECT v.marca, v.modelo,
+                AVG(s.preco_final - v.preco_compra - COALESCE((SELECT SUM(valor) FROM vehicle_expenses e WHERE e.vehicle_id = v.id), 0)) AS margem_media,
+                COUNT(*) AS num_vendas
+         FROM sales s
+         JOIN vehicles v ON v.id = s.vehicle_id
+         WHERE s.estado = 'concluida' AND s.data_venda BETWEEN $1 AND $2
+         ${filtroVendedorMarcaModelo}
+         GROUP BY v.marca, v.modelo
+         ORDER BY margem_media DESC`,
+        filtroParams,
+      ));
+
+      // people vive na DB Central (schema "public"), não no schema do
+      // tenant — join cross-schema com nome totalmente qualificado, que
+      // ignora o search_path definido pelo TenantService (testado contra
+      // o Postgres real).
+      ({ rows: rankingVendedores } = await client.query(
+        `SELECT s.vendedor_id, p.nome AS vendedor_nome,
+                COUNT(*) AS num_vendas, SUM(s.preco_final) AS valor_total, SUM(COALESCE(s.comissao_vendedor, 0)) AS comissao_total
+         FROM sales s
+         JOIN vehicles v ON v.id = s.vehicle_id
+         LEFT JOIN public.people p ON p.id = s.vendedor_id
+         WHERE s.estado = 'concluida' AND s.data_venda BETWEEN $1 AND $2
+         ${filtroVendedorMarcaModelo}
+         GROUP BY s.vendedor_id, p.nome
+         ORDER BY valor_total DESC`,
+        filtroParams,
+      ));
+
+      // Cashflow (corrigido 2026-07-27): usa sempre a data REAL do
+      // movimento (data do lançamento / data de entrada em stock / data
+      // da despesa), nunca a data da venda — antes disto, comprar um
+      // carro em janeiro e vendê-lo em março aparecia como despesa de
+      // março, desalinhando o KPI sempre que o carro fica em stock mais
+      // de um mês (caso normal do negócio). Nunca filtrado por
+      // vendedor/marca/modelo — é sempre o cashflow do stand todo.
+      ({ rows: cashflowRows } = await client.query<{
+        receitas: string;
+        despesas_gerais: string;
+        vendas: string;
+        despesas_veiculos: string;
+        compras: string;
+      }>(
+        `SELECT
+           COALESCE((SELECT SUM(valor) FROM finance_entries WHERE tipo = 'receita' AND data BETWEEN $1 AND $2), 0) AS receitas,
+           COALESCE((SELECT SUM(valor) FROM finance_entries WHERE tipo = 'despesa' AND data BETWEEN $1 AND $2), 0) AS despesas_gerais,
+           COALESCE((SELECT SUM(preco_final) FROM sales WHERE estado = 'concluida' AND data_venda BETWEEN $1 AND $2), 0) AS vendas,
+           COALESCE((SELECT SUM(valor) FROM vehicle_expenses WHERE data BETWEEN $1 AND $2), 0) AS despesas_veiculos,
+           COALESCE((SELECT SUM(preco_compra) FROM vehicles WHERE data_entrada_stock BETWEEN $1 AND $2), 0) AS compras`,
+        [inicio, fim],
+      ));
+
+      ({ rows: desvioRows } = await client.query<{ desvio_medio: string }>(
+        `SELECT AVG(preco_final - v.preco_venda_recomendado) AS desvio_medio
+         FROM sales s JOIN vehicles v ON v.id = s.vehicle_id
+         WHERE s.estado = 'concluida' AND s.data_venda BETWEEN $1 AND $2
+         ${filtroVendedorMarcaModelo}`,
+        filtroParams,
+      ));
+
+      ({ rows: mercadoRows } = await client.query<{ diferenca_media: string }>(
+        `SELECT AVG(s.preco_final - m.preco_medio) AS diferenca_media
+         FROM sales s
+         JOIN vehicles v ON v.id = s.vehicle_id
+         JOIN LATERAL (
+           SELECT AVG(preco_medio) AS preco_medio FROM market_estimates me
+           WHERE me.vehicle_id = v.id AND me.consultado_em <= s.data_venda + INTERVAL '1 day'
+         ) m ON true
+         WHERE s.estado = 'concluida' AND s.data_venda BETWEEN $1 AND $2 AND m.preco_medio IS NOT NULL
+         ${filtroVendedorMarcaModelo}`,
+        filtroParams,
+      ));
+
+      // Despesas GERAIS da empresa (renda, salários, marketing, ...) —
+      // nada a ver com veículos. Pedido explícito do utilizador: os dois
+      // tipos de despesa (gerais vs. por veículo) têm de ficar sempre
+      // visíveis em separado, nunca só somados escondidos no cashflow.
+      ({ rows: despesasGeraisPorCategoria } = await client.query<{ categoria: string | null; total: string }>(
+        `SELECT categoria, SUM(valor) AS total
+         FROM finance_entries
+         WHERE tipo = 'despesa' AND data BETWEEN $1 AND $2
+         GROUP BY categoria
+         ORDER BY total DESC`,
+        [inicio, fim],
+      ));
+
+      // Despesas POR VEÍCULO (reparação, transporte, legalização, limpeza)
+      // — estas sim respeitam marca/modelo (não vendedor, despesa não é
+      // atribuível a quem vendeu o carro).
+      ({ rows: despesasVeiculosPorCategoria } = await client.query<{ categoria: string | null; total: string }>(
+        `SELECT e.categoria, SUM(e.valor) AS total
+         FROM vehicle_expenses e
+         JOIN vehicles v ON v.id = e.vehicle_id
+         WHERE e.data BETWEEN $1 AND $2
+         -- $3 (vendedorId) não se aplica aqui de propósito (despesa não é
+         -- atribuível a quem vendeu o carro) — a referência a ::uuid serve
+         -- só para o Postgres conseguir inferir o tipo do parâmetro.
+         AND ($3::uuid IS NULL OR TRUE)
+         AND ($4::text IS NULL OR v.marca ILIKE $4)
+         AND ($5::text IS NULL OR v.modelo ILIKE $5)
+         GROUP BY e.categoria
+         ORDER BY total DESC`,
+        filtroParams,
+      ));
+    } finally {
+      client.release();
+    }
 
     const cf = cashflowRows[0];
     const cashflow =
