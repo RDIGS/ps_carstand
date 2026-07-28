@@ -5,6 +5,7 @@ import { TenantService } from '../tenant/tenant.service';
 import { CreateStandDto } from './dto/create-stand.dto';
 import { UpdateStandTokenDto } from './dto/update-stand-token.dto';
 import { UpdateStandProfileDto } from './dto/update-stand-profile.dto';
+import { RegisterStandPaymentDto } from './dto/register-stand-payment.dto';
 import { generateStandToken } from './stand-token.util';
 import { hashPassword } from '../common/utils/password.util';
 
@@ -79,6 +80,38 @@ export class StandsService {
         tokenEstado: dto.tokenEstado,
       },
     });
+  }
+
+  // Histórico de pagamentos da subscrição (pedido do utilizador, 2026-07-27,
+  // fora da arquitetura v1.0 original) — registar um pagamento estende
+  // automaticamente a validade do token e reativa-o, para não depender de
+  // 2 ações manuais separadas sempre que um stand paga.
+  async registerPayment(standId: string, dto: RegisterStandPaymentDto) {
+    const stand = await this.prisma.stand.findUniqueOrThrow({ where: { id: standId } });
+
+    const dataPagamento = dto.data ? new Date(dto.data) : new Date();
+    const payment = await this.prisma.standPayment.create({
+      data: { standId, valor: dto.valor, data: dataPagamento, notas: dto.notas },
+    });
+
+    // A extensão parte da validade atual se ainda não tiver passado (paga
+    // adiantado, soma-se ao que já tinha), ou de hoje se já tiver expirado
+    // (nunca "recupera" tempo que já passou em carência/expirado).
+    const hoje = new Date();
+    const baseValidade = stand.tokenValidoAte && stand.tokenValidoAte > hoje ? stand.tokenValidoAte : hoje;
+    const novaValidade = new Date(baseValidade);
+    novaValidade.setMonth(novaValidade.getMonth() + (stand.plano === 'anual' ? 12 : 1));
+
+    const standAtualizado = await this.prisma.stand.update({
+      where: { id: standId },
+      data: { tokenValidoAte: novaValidade, tokenEstado: 'ativo' },
+    });
+
+    return { payment, stand: standAtualizado };
+  }
+
+  listPayments(standId: string) {
+    return this.prisma.standPayment.findMany({ where: { standId }, orderBy: { data: 'desc' } });
   }
 
   /**

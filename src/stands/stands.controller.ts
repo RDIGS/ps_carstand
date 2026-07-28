@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } f
 import { StandsService } from './stands.service';
 import { CreateStandDto } from './dto/create-stand.dto';
 import { UpdateStandTokenDto } from './dto/update-stand-token.dto';
+import { RegisterStandPaymentDto } from './dto/register-stand-payment.dto';
 import { AdminApiKeyGuard } from '../common/guards/admin-api-key.guard';
 import { Public } from '../common/decorators/public.decorator';
 
@@ -25,5 +26,15 @@ export class StandsController {
   @Patch(':id/token')
   updateToken(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateStandTokenDto) {
     return this.standsService.updateToken(id, dto);
+  }
+
+  @Post(':id/payments')
+  registerPayment(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RegisterStandPaymentDto) {
+    return this.standsService.registerPayment(id, dto);
+  }
+
+  @Get(':id/payments')
+  listPayments(@Param('id', ParseUUIDPipe) id: string) {
+    return this.standsService.listPayments(id);
   }
 }

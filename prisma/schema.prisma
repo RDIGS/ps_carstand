@@ -89,8 +89,26 @@ model Stand {
 
   members     StandMember[]
   suggestions Suggestion[]
+  payments    StandPayment[]
 
   @@map("stands")
+}
+
+// Histórico de pagamentos da subscrição (dono do stand → PS CarStand), pedido
+// pelo utilizador em 2026-07-27 — antes disto só existia notasPagamento
+// (texto livre, sem histórico real). Registar um pagamento estende
+// automaticamente tokenValidoAte e reativa o token (ver StandsService.registerPayment).
+model StandPayment {
+  id       String   @id @default(uuid()) @db.Uuid
+  standId  String   @map("stand_id") @db.Uuid
+  valor    Decimal  @db.Decimal(10, 2)
+  data     DateTime @db.Date
+  notas    String?
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  stand Stand @relation(fields: [standId], references: [id], onDelete: Cascade)
+
+  @@map("stand_payments")
 }
 
 // Sugestões enviadas pelos utilizadores dos stands (owner ou vendedor) —
