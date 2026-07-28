@@ -82,6 +82,18 @@ CREATE TABLE sales (
   data_venda DATE DEFAULT CURRENT_DATE,
   doc_registo_compra_url TEXT,
   doc_responsabilidade_url TEXT,
+  -- Q4 ("Sujeito Passivo") do DUA_Final (Modelo 1 RA do IRN) — quem aparece
+  -- como vendedor legal no requerimento de registo automóvel. Nem sempre é o
+  -- stand (às vezes o carro nunca chega a ser registado em nome do stand);
+  -- por isso é escolhido em cada venda, não assumido.
+  transmitente_e_stand BOOLEAN NOT NULL DEFAULT true,
+  transmitente_nome TEXT,
+  transmitente_nif TEXT,
+  transmitente_morada TEXT,
+  transmitente_cp TEXT,
+  transmitente_identificacao_tipo TEXT CHECK (transmitente_identificacao_tipo IN ('bi','cc','titulo_residencia','outro')),
+  transmitente_identificacao_numero TEXT,
+  doc_dua_final_url TEXT,
   -- Digitalização do documento de identificação do comprador (secção 23) —
   -- só preenchido se o utilizador confirmar que as fotos já estavam
   -- cortadas/prontas; caso contrário as fotos são só transitórias (usadas

@@ -112,8 +112,10 @@ export class SalesService {
         `INSERT INTO sales (
            vehicle_id, comprador_nome, comprador_nif, comprador_morada, comprador_cp, comprador_telefone,
            comprador_identificacao_tipo, comprador_identificacao_numero, preco_final,
-           vendedor_id, comissao_vendedor
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+           vendedor_id, comissao_vendedor,
+           transmitente_e_stand, transmitente_nome, transmitente_nif, transmitente_morada, transmitente_cp,
+           transmitente_identificacao_tipo, transmitente_identificacao_numero
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
          RETURNING *`,
         [
           dto.vehicleId,
@@ -127,6 +129,13 @@ export class SalesService {
           dto.precoFinal,
           user.sub,
           dto.comissaoVendedor ?? null,
+          dto.transmitenteEStand ?? true,
+          dto.transmitenteNome ?? null,
+          dto.transmitenteNif ?? null,
+          dto.transmitenteMorada ?? null,
+          dto.transmitenteCp ?? null,
+          dto.transmitenteIdentificacaoTipo ?? null,
+          dto.transmitenteIdentificacaoNumero ?? null,
         ],
       );
       sale = saleResult.rows[0];
@@ -193,11 +202,47 @@ export class SalesService {
       this.logger.error(`Falha ao gerar o Registo de Compra da venda ${sale.id}`, err instanceof Error ? err.stack : err);
     }
 
+    // Mesmo padrão "best-effort" do Registo de Compra acima — a venda já
+    // está confirmada, uma falha aqui (ex.: template ilegível, campo
+    // inesperado) nunca pode reverter nem bloquear a resposta.
+    let duaFinalUrl: string | null = null;
+    try {
+      duaFinalUrl = await this.documents.generateDuaFinal(user.schemaName, sale.id, {
+        vehicle: { matricula: vehicle.matricula, marca: vehicle.marca, chassis: vehicle.chassis },
+        comprador: {
+          nome: dto.compradorNome,
+          nif: dto.compradorNif,
+          morada: dto.compradorMorada,
+          cp: dto.compradorCp,
+          identificacaoTipo: dto.compradorIdentificacaoTipo,
+          identificacaoNumero: dto.compradorIdentificacaoNumero,
+        },
+        transmitente:
+          dto.transmitenteEStand ?? true
+            ? { nome: stand.nome, nif: stand.nif, morada: stand.morada }
+            : {
+                nome: dto.transmitenteNome ?? '',
+                nif: dto.transmitenteNif,
+                morada: dto.transmitenteMorada,
+                cp: dto.transmitenteCp,
+                identificacaoTipo: dto.transmitenteIdentificacaoTipo,
+                identificacaoNumero: dto.transmitenteIdentificacaoNumero,
+              },
+        dataVenda: new Date(sale.data_venda),
+      });
+      await this.tenant.query(user.schemaName, `UPDATE sales SET doc_dua_final_url = $2 WHERE id = $1`, [
+        sale.id,
+        duaFinalUrl,
+      ]);
+    } catch (err) {
+      this.logger.error(`Falha ao gerar o DUA_Final da venda ${sale.id}`, err instanceof Error ? err.stack : err);
+    }
+
     await this.audit.log(user.schemaName, {
       entidade: 'sale',
       entidadeId: sale.id,
       acao: 'criado',
-      valorNovo: { ...sale, doc_registo_compra_url: docUrl },
+      valorNovo: { ...sale, doc_registo_compra_url: docUrl, doc_dua_final_url: duaFinalUrl },
       feitoPor: user.sub,
     });
     await this.audit.log(user.schemaName, {
@@ -209,7 +254,7 @@ export class SalesService {
       feitoPor: user.sub,
     });
 
-    return { id: sale.id, doc_registo_compra_url: docUrl, vehicle_estado: 'vendido' };
+    return { id: sale.id, doc_registo_compra_url: docUrl, doc_dua_final_url: duaFinalUrl, vehicle_estado: 'vendido' };
   }
 
   async revert(user: JwtPayload, saleId: string) {
@@ -229,6 +274,7 @@ export class SalesService {
       // paralelo — a verificação em cima (antes da transação) é só atalho.
       const saleUpdate = await client.query(
         `UPDATE sales SET estado = 'revertida', doc_registo_compra_url = NULL, doc_responsabilidade_url = NULL,
+           doc_dua_final_url = NULL,
            identificacao_frente_url = NULL, identificacao_verso_url = NULL, identificacao_documento_combinado_url = NULL
          WHERE id = $1 AND estado = 'concluida'`,
         [saleId],
