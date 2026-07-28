@@ -73,6 +73,18 @@ export class TenantService {
     return client;
   }
 
+  /** Elimina o schema de um stand por completo (StandsService.remove). Irreversível. */
+  async dropSchema(schemaName: string): Promise<void> {
+    assertValidSchemaName(schemaName);
+    const client = await this.pool.connect();
+    try {
+      await client.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+      this.logger.log(`Schema eliminado: ${schemaName}`);
+    } finally {
+      client.release();
+    }
+  }
+
   async onApplicationShutdown(): Promise<void> {
     await this.pool.end();
   }

@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantService } from '../tenant/tenant.service';
 import { CreateStandDto } from './dto/create-stand.dto';
+import { UpdateStandDto } from './dto/update-stand.dto';
 import { UpdateStandTokenDto } from './dto/update-stand-token.dto';
 import { UpdateStandProfileDto } from './dto/update-stand-profile.dto';
 import { RegisterStandPaymentDto } from './dto/register-stand-payment.dto';
@@ -70,6 +71,30 @@ export class StandsService {
       },
       select: { id: true, nome: true, contacto: true, redesSociais: true },
     });
+  }
+
+  // Edição geral pelo super-admin (secção 12.4) — antes disto, corrigir
+  // nif/morada/plano/permissões de vendedor/etc. depois de criar um stand
+  // exigia um script direto à BD, não havia rota nenhuma para isso.
+  async update(standId: string, dto: UpdateStandDto) {
+    await this.findOrThrow(standId);
+    return this.prisma.stand.update({ where: { id: standId }, data: dto });
+  }
+
+  // Elimina o stand a sério (linha na BD + schema de tenant todo, via
+  // DROP SCHEMA) — antes disto não existia nenhuma forma de o fazer a não
+  // ser um script ad-hoc à BD de produção. Não limpa ficheiros órfãos no
+  // Storage (bucket de documentos) — gap conhecido, ver secção 27.
+  async remove(standId: string): Promise<void> {
+    const stand = await this.findOrThrow(standId);
+    await this.tenant.dropSchema(stand.schemaName);
+    await this.prisma.stand.delete({ where: { id: standId } });
+  }
+
+  private async findOrThrow(standId: string) {
+    const stand = await this.prisma.stand.findUnique({ where: { id: standId } });
+    if (!stand) throw new NotFoundException({ error: 'nao_encontrado', message: 'Stand não encontrado.' });
+    return stand;
   }
 
   async updateToken(standId: string, dto: UpdateStandTokenDto) {

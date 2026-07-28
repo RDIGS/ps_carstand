@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { StandsService } from './stands.service';
 import { CreateStandDto } from './dto/create-stand.dto';
+import { UpdateStandDto } from './dto/update-stand.dto';
 import { UpdateStandTokenDto } from './dto/update-stand-token.dto';
 import { RegisterStandPaymentDto } from './dto/register-stand-payment.dto';
 import { AdminApiKeyGuard } from '../common/guards/admin-api-key.guard';
@@ -21,6 +22,17 @@ export class StandsController {
   @Get()
   list() {
     return this.standsService.list();
+  }
+
+  @Patch(':id')
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateStandDto) {
+    return this.standsService.update(id, dto);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(@Param('id', ParseUUIDPipe) id: string) {
+    return this.standsService.remove(id);
   }
 
   @Patch(':id/token')
