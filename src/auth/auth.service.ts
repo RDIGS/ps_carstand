@@ -6,7 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
-import { comparePassword } from '../common/utils/password.util';
+import { comparePassword, hashPassword } from '../common/utils/password.util';
 import { generateOpaqueToken, hashToken } from '../common/utils/token-hash.util';
 import { JwtPayload } from '../common/types/jwt-payload.interface';
 import { Stand, TokenEstado } from '@prisma/client';
@@ -189,6 +189,32 @@ export class AuthService {
       dias_para_expirar: diasParaExpirar,
       dias_carencia_restantes: diasCarenciaRestantes,
     };
+  }
+
+  // Secção 29: código curto gerado pelo super-admin (TeamService.generateResetCode),
+  // partilhado por fora da app — resolve o caso do owner esquecer a password
+  // sem ninguém acima dele dentro da app. Mensagem de erro genérica em todos
+  // os casos de falha (email inexistente incluído) para não revelar quais
+  // emails existem na plataforma.
+  async resetPasswordWithCode(email: string, code: string, novaPassword: string): Promise<void> {
+    const erroGenerico = new UnauthorizedException({ error: 'codigo_invalido', message: 'Código inválido ou expirado.' });
+
+    const person = await this.prisma.person.findUnique({ where: { email } });
+    if (!person) throw erroGenerico;
+
+    const codeHash = hashToken(code.trim().toUpperCase().replace(/\s+/g, ''));
+    const resetCode = await this.prisma.passwordResetCode.findUnique({ where: { codeHash } });
+    if (!resetCode || resetCode.personId !== person.id || resetCode.usadoEm || resetCode.expiraEm < new Date()) {
+      throw erroGenerico;
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.person.update({ where: { id: person.id }, data: { passwordHash: await hashPassword(novaPassword) } }),
+      this.prisma.passwordResetCode.update({ where: { id: resetCode.id }, data: { usadoEm: new Date() } }),
+      // Força logout em todos os dispositivos — mesma lógica da deteção de
+      // roubo de refresh token (secção 21) e do reset de vendedor.
+      this.prisma.refreshToken.updateMany({ where: { personId: person.id, revogado: false }, data: { revogado: true } }),
+    ]);
   }
 
   async logout(rawRefreshToken: string): Promise<void> {

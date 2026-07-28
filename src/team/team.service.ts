@@ -6,6 +6,10 @@ import { InviteMemberDto } from './dto/invite-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { JwtPayload } from '../common/types/jwt-payload.interface';
 import { hashPassword } from '../common/utils/password.util';
+import { hashToken } from '../common/utils/token-hash.util';
+import { generatePasswordResetCode } from '../common/utils/reset-code.util';
+
+const RESET_CODE_VALIDADE_MS = 60 * 60 * 1000; // 1h — código de uso único, ver secção 29
 
 @Injectable()
 export class TeamService {
@@ -167,5 +171,23 @@ export class TeamService {
     const membership = await this.prisma.standMember.findFirst({ where: { id: memberId, standId } });
     if (!membership) throw new NotFoundException({ error: 'nao_encontrado', message: 'Membro não encontrado.' });
     await this.prisma.standMember.delete({ where: { id: memberId } });
+  }
+
+  // Só o super-admin (painel de plataforma) gera isto — resolve o caso do
+  // owner esquecer a password sem ninguém acima dele dentro da app (secção
+  // 29). Funciona para qualquer role, não só owner: é sempre mais direto que
+  // pedir ao super-admin para reinventar o fluxo de vendedor caso o único
+  // owner de um stand também esteja bloqueado.
+  async generateResetCode(standId: string, memberId: string) {
+    const membership = await this.prisma.standMember.findFirst({ where: { id: memberId, standId } });
+    if (!membership) throw new NotFoundException({ error: 'nao_encontrado', message: 'Membro não encontrado.' });
+
+    const code = generatePasswordResetCode();
+    const expiraEm = new Date(Date.now() + RESET_CODE_VALIDADE_MS);
+    await this.prisma.passwordResetCode.create({
+      data: { personId: membership.personId, codeHash: hashToken(code), expiraEm },
+    });
+
+    return { code, expiraEm };
   }
 }

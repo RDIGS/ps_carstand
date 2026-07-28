@@ -2,7 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { Pool, PoolClient } from 'pg';
+import { Pool, PoolClient, types } from 'pg';
+
+// Colunas DATE (oid 1082) vêm por omissão como objeto JS Date, que ao
+// serializar em JSON ganha hora/fuso (ex.: "2020-05-14T00:00:00.000Z") — sem
+// sentido para um valor que só representa um dia. Devolver a string tal como
+// o Postgres a envia ("2020-05-14").
+types.setTypeParser(1082, (val) => val);
 
 // Regex simples de whitelist para nomes de schema (ex: "stand_3f2a9c1b"),
 // nunca gerados a partir de input direto do utilizador — mas validamos

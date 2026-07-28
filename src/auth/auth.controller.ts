@@ -5,6 +5,7 @@ import { ValidateTokenDto } from './dto/validate-token.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { UpdateIdiomaDto } from './dto/update-idioma.dto';
+import { ResetPasswordWithCodeDto } from './dto/reset-password-with-code.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -67,6 +68,15 @@ export class AuthController {
   @Roles('owner')
   subscriptionStatus(@CurrentUser() user: JwtPayload) {
     return this.authService.subscriptionStatus(user.standId);
+  }
+
+  @Public()
+  @Post('reset-password-with-code')
+  // Mesma razão do login/validate-token: previne força bruta a adivinhar o código.
+  @Throttle({ default: { limit: 10, ttl: 900_000 } })
+  @HttpCode(HttpStatus.OK)
+  async resetPasswordWithCode(@Body() dto: ResetPasswordWithCodeDto) {
+    await this.authService.resetPasswordWithCode(dto.email, dto.code, dto.novaPassword);
   }
 
   @Public()

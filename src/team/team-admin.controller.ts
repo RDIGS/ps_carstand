@@ -37,4 +37,13 @@ export class TeamAdminController {
   remove(@Param('standId', ParseUUIDPipe) standId: string, @Param('memberId', ParseUUIDPipe) memberId: string) {
     return this.teamService.removeByStandId(standId, memberId);
   }
+
+  // Gera o código curto que o dono usa em "Esqueceste-te da password?" no
+  // ecrã de login (secção 29) — resolve o caso de um owner ficar bloqueado
+  // sem ninguém acima dele dentro da app.
+  @Post(':memberId/reset-password-code')
+  @HttpCode(HttpStatus.OK)
+  generateResetCode(@Param('standId', ParseUUIDPipe) standId: string, @Param('memberId', ParseUUIDPipe) memberId: string) {
+    return this.teamService.generateResetCode(standId, memberId);
+  }
 }

@@ -62,8 +62,25 @@ model Person {
   refreshTokens   RefreshToken[]
   legalAcceptances LegalAcceptance[]
   suggestions     Suggestion[]
+  passwordResetCodes PasswordResetCode[]
 
   @@map("people")
+}
+
+// Código de reposição de password gerado pelo super-admin (secção 29) — para
+// o caso de um owner esquecer a password e não ter ninguém acima dele dentro
+// da app que a possa repor (ao contrário do vendedor, reposto pelo owner).
+model PasswordResetCode {
+  id       String    @id @default(uuid()) @db.Uuid
+  personId String    @map("person_id") @db.Uuid
+  codeHash String    @unique @map("code_hash")
+  expiraEm DateTime  @map("expira_em")
+  usadoEm  DateTime? @map("usado_em")
+  criadoEm DateTime  @default(now()) @map("criado_em")
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_codes")
 }
 
 model Stand {

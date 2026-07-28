@@ -98,6 +98,9 @@ export class VehiclesService {
       kms: dto.kms,
       preco_compra: dto.precoCompra,
       preco_venda_recomendado: dto.precoVendaRecomendado,
+      data_primeira_matricula: dto.dataPrimeiraMatricula,
+      num_lugares: dto.numLugares,
+      importado: dto.importado,
     };
 
     if (user.role === 'vendedor') {
