@@ -111,11 +111,13 @@ export class SalesService {
       const saleResult = await client.query(
         `INSERT INTO sales (
            vehicle_id, comprador_nome, comprador_nif, comprador_morada, comprador_cp, comprador_telefone,
+           comprador_localidade, comprador_email,
            comprador_identificacao_tipo, comprador_identificacao_numero, preco_final,
            vendedor_id, comissao_vendedor,
            transmitente_e_stand, transmitente_nome, transmitente_nif, transmitente_morada, transmitente_cp,
+           transmitente_localidade, transmitente_email,
            transmitente_identificacao_tipo, transmitente_identificacao_numero
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
          RETURNING *`,
         [
           dto.vehicleId,
@@ -124,6 +126,8 @@ export class SalesService {
           dto.compradorMorada ?? null,
           dto.compradorCp ?? null,
           dto.compradorTelefone ?? null,
+          dto.compradorLocalidade ?? null,
+          dto.compradorEmail ?? null,
           dto.compradorIdentificacaoTipo ?? null,
           dto.compradorIdentificacaoNumero ?? null,
           dto.precoFinal,
@@ -134,6 +138,8 @@ export class SalesService {
           dto.transmitenteNif ?? null,
           dto.transmitenteMorada ?? null,
           dto.transmitenteCp ?? null,
+          dto.transmitenteLocalidade ?? null,
+          dto.transmitenteEmail ?? null,
           dto.transmitenteIdentificacaoTipo ?? null,
           dto.transmitenteIdentificacaoNumero ?? null,
         ],
@@ -214,6 +220,8 @@ export class SalesService {
           nif: dto.compradorNif,
           morada: dto.compradorMorada,
           cp: dto.compradorCp,
+          localidade: dto.compradorLocalidade,
+          email: dto.compradorEmail,
           identificacaoTipo: dto.compradorIdentificacaoTipo,
           identificacaoNumero: dto.compradorIdentificacaoNumero,
         },
@@ -225,6 +233,8 @@ export class SalesService {
                 nif: dto.transmitenteNif,
                 morada: dto.transmitenteMorada,
                 cp: dto.transmitenteCp,
+                localidade: dto.transmitenteLocalidade,
+                email: dto.transmitenteEmail,
                 identificacaoTipo: dto.transmitenteIdentificacaoTipo,
                 identificacaoNumero: dto.transmitenteIdentificacaoNumero,
               },

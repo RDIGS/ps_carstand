@@ -13,6 +13,8 @@ export interface DuaFinalPessoa {
   nif?: string | null;
   morada?: string | null;
   cp?: string | null; // formato ####-###
+  localidade?: string | null;
+  email?: string | null;
   identificacaoTipo?: string | null; // bi | cc | titulo_residencia | outro
   identificacaoNumero?: string | null;
 }
@@ -65,6 +67,7 @@ function preencherPessoa(
     cp1: string;
     cp2: string;
     localidade: string;
+    email: string;
     identificacaoNumero: string;
     outro: string;
     radio: string;
@@ -76,6 +79,8 @@ function preencherPessoa(
   const [cp1, cp2] = splitCodigoPostal(pessoa.cp);
   setText(form, campos.cp1, cp1);
   setText(form, campos.cp2, cp2);
+  setText(form, campos.localidade, pessoa.localidade);
+  setText(form, campos.email, pessoa.email);
   setText(form, campos.identificacaoNumero, pessoa.identificacaoNumero);
   const radioValue = radioIdentificacao(pessoa.identificacaoTipo);
   if (radioValue) {
@@ -116,6 +121,7 @@ export async function generateDuaFinalPdf(data: DuaFinalData): Promise<Buffer> {
     cp1: 'cod postal 1Q3',
     cp2: 'cod postal 2Q3',
     localidade: 'Localidade Q3',
+    email: 'Email Q3',
     identificacaoNumero: 'N identificacao 1 Q3',
     outro: 'Outro Q3',
     radio: 'Q3 bcc',
@@ -130,6 +136,7 @@ export async function generateDuaFinalPdf(data: DuaFinalData): Promise<Buffer> {
     cp1: 'cod postal 1 Q4',
     cp2: 'cod postal2 Q4',
     localidade: 'Localidade Q4',
+    email: 'Email Q4',
     identificacaoNumero: 'N identificacao 1 Q4',
     outro: 'Outro Q4',
     radio: 'Q4 bcc',
@@ -148,11 +155,18 @@ export async function generateDuaFinalPdf(data: DuaFinalData): Promise<Buffer> {
     /* nunca bloquear a geração do PDF por causa de um radio */
   }
 
-  // Q9 — Assinaturas: só o nº de identificação (o resto — assinatura,
-  // entidade emissora, validade — exige preenchimento manual/assinatura
-  // física, não são dados que a app tenha).
+  // Q9 — Assinaturas: nº de identificação + data de emissão/validade (pedido
+  // do utilizador: usar sempre o dia da venda, já que a app não conhece a
+  // validade real do documento de identificação). Assinatura/entidade
+  // emissora continuam em branco — exigem assinatura física.
   setText(form, 'N Identificacao 1 Q9', data.comprador.identificacaoNumero);
+  setText(form, 'data dia 1 Q9', dia);
+  setText(form, 'data mes 1 Q9', mes);
+  setText(form, 'data ano 1 Q9', ano);
   setText(form, 'N Identificacao 2 Q9', data.transmitente.identificacaoNumero);
+  setText(form, 'data dia 2 Q9', dia);
+  setText(form, 'data mes 2 Q9', mes);
+  setText(form, 'data ano 2 Q9', ano);
 
   // "Achatar" o formulário — o que falta (Q8, assinaturas, moradas
   // completas) é para preencher/assinar à mão numa impressão, não faz

@@ -24,6 +24,14 @@ export class CreateSaleDto {
   compradorTelefone?: string;
 
   @IsOptional()
+  @IsString()
+  compradorLocalidade?: string;
+
+  @IsOptional()
+  @IsString()
+  compradorEmail?: string;
+
+  @IsOptional()
   @IsIn(['bi', 'cc', 'titulo_residencia', 'outro'])
   compradorIdentificacaoTipo?: string;
 
@@ -60,6 +68,14 @@ export class CreateSaleDto {
   @IsOptional()
   @Matches(/^\d{4}-\d{3}$/, { message: 'Código postal deve ter o formato ####-###.' })
   transmitenteCp?: string;
+
+  @IsOptional()
+  @IsString()
+  transmitenteLocalidade?: string;
+
+  @IsOptional()
+  @IsString()
+  transmitenteEmail?: string;
 
   @IsOptional()
   @IsIn(['bi', 'cc', 'titulo_residencia', 'outro'])
