@@ -24,6 +24,7 @@ import { CrawlersModule } from './crawlers/crawlers.module';
 import { DocumentsModule } from './documents/documents.module';
 import { SuggestionsModule } from './suggestions/suggestions.module';
 import { LeadsModule } from './leads/leads.module';
+import { CalendarModule } from './calendar/calendar.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { StandThrottlerGuard } from './common/guards/stand-throttler.guard';
@@ -55,6 +56,7 @@ import { StandThrottlerGuard } from './common/guards/stand-throttler.guard';
     AuditModule,
     SuggestionsModule,
     LeadsModule,
+    CalendarModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

@@ -252,3 +252,45 @@ CREATE TABLE leads (
 
 CREATE INDEX idx_leads_vehicle ON leads(vehicle_id);
 CREATE INDEX idx_leads_estado ON leads(estado);
+
+-- Calendário de equipa (secção nova, 2026-09-08) — eventos internos ao
+-- stand (nunca entre stands diferentes, isso quebraria o isolamento entre
+-- tenants). Um evento pode ficar solto (reunião genérica), ligado a um
+-- veículo/lead (test-drive, entrega), ou sem ninguém convidado — nesse caso
+-- funciona como uma tarefa do stand por fazer (`concluido` faz de "feito/
+-- por fazer"), visível a toda a equipa no calendário do stand.
+CREATE TABLE calendar_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  titulo TEXT NOT NULL,
+  descricao TEXT,
+  data_hora_inicio TIMESTAMPTZ NOT NULL,
+  data_hora_fim TIMESTAMPTZ,
+  vehicle_id UUID REFERENCES vehicles(id) ON DELETE SET NULL,
+  lead_id UUID REFERENCES leads(id) ON DELETE SET NULL,
+  criado_por UUID NOT NULL,
+  concluido BOOLEAN NOT NULL DEFAULT false,
+  criado_em TIMESTAMPTZ DEFAULT now(),
+  atualizado_em TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_calendar_events_data ON calendar_events(data_hora_inicio);
+CREATE INDEX idx_calendar_events_vehicle ON calendar_events(vehicle_id);
+CREATE INDEX idx_calendar_events_lead ON calendar_events(lead_id);
+
+-- Convite por pessoa — separado do evento em si porque o mesmo evento pode
+-- ter vários convidados, cada um com o seu próprio estado de resposta.
+-- `person_id` é um UUID solto (sem FK, mesmo motivo de `pago_por` em
+-- finance_entries: schemas de tenant não conseguem referenciar
+-- `public.people`) — validado como membro do stand no serviço, não na BD.
+CREATE TABLE calendar_event_participants (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id UUID REFERENCES calendar_events(id) ON DELETE CASCADE,
+  person_id UUID NOT NULL,
+  estado TEXT NOT NULL DEFAULT 'pendente' CHECK (estado IN ('pendente','aceite','recusado')),
+  respondido_em TIMESTAMPTZ,
+  criado_em TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (event_id, person_id)
+);
+
+CREATE INDEX idx_calendar_participants_event ON calendar_event_participants(event_id);
+CREATE INDEX idx_calendar_participants_person ON calendar_event_participants(person_id);
