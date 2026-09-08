@@ -157,14 +157,16 @@ export class VehiclesRepository {
       fornecedorNif?: string;
       valorIva?: number;
       taxaIva?: number;
+      pago?: boolean;
+      dataVencimento?: string;
     },
     criadoPor: string,
   ) {
     const rows = await this.tenant.query(
       schemaName,
       `INSERT INTO vehicle_expenses
-         (vehicle_id, categoria, descricao, valor, data, criado_por, metodo_pagamento, pago_por, fornecedor_nome, fornecedor_nif, valor_iva, taxa_iva)
-       VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+         (vehicle_id, categoria, descricao, valor, data, criado_por, metodo_pagamento, pago_por, fornecedor_nome, fornecedor_nif, valor_iva, taxa_iva, pago, data_vencimento)
+       VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, $7, $8, $9, $10, $11, $12, COALESCE($13, true), $14) RETURNING *`,
       [
         vehicleId,
         dto.categoria,
@@ -178,6 +180,8 @@ export class VehiclesRepository {
         dto.fornecedorNif ?? null,
         dto.valorIva ?? null,
         dto.taxaIva ?? null,
+        dto.pago ?? null,
+        dto.dataVencimento ?? null,
       ],
     );
     return rows[0];
@@ -208,6 +212,8 @@ export class VehiclesRepository {
       fornecedor_nif?: string | null;
       valor_iva?: number | null;
       taxa_iva?: number | null;
+      pago?: boolean;
+      data_vencimento?: string | null;
     },
   ) {
     const columns = Object.entries(fields).filter(([, v]) => v !== undefined);

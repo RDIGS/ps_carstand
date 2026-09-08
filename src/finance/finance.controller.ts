@@ -61,6 +61,12 @@ export class FinanceController {
     return this.financeService.listEntries(user, query);
   }
 
+  // Contas a pagar/receber — secção nova, 2026-09-08.
+  @Get('contas-pendentes')
+  contasPendentes(@CurrentUser() user: JwtPayload) {
+    return this.financeService.contasPendentes(user);
+  }
+
   @Post('entries')
   createEntry(@CurrentUser() user: JwtPayload, @Body() dto: CreateFinanceEntryDto) {
     return this.financeService.createEntry(user, dto);

@@ -280,6 +280,8 @@ export class VehiclesService {
       fornecedor_nif: dto.fornecedorNif,
       valor_iva: dto.valorIva,
       taxa_iva: dto.taxaIva,
+      pago: dto.pago,
+      data_vencimento: dto.dataVencimento,
     });
     await this.audit.log(user.schemaName, {
       entidade: 'vehicle_expense',

@@ -60,4 +60,16 @@ export class CreateFinanceEntryDto {
   @IsNumber()
   @Min(0)
   taxaIva?: number;
+
+  // Contas a pagar/receber: por omissão (`undefined`) fica `pago = true`
+  // no INSERT — um lançamento normal continua a significar "já aconteceu",
+  // como sempre significou. `pago: false` + `dataVencimento` marca um
+  // lançamento futuro ainda por pagar/receber.
+  @IsOptional()
+  @IsBoolean()
+  pago?: boolean;
+
+  @IsOptional()
+  @IsDateString()
+  dataVencimento?: string;
 }

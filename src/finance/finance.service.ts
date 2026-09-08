@@ -64,8 +64,8 @@ export class FinanceService {
     const [entry] = await this.tenant.query(
       user.schemaName,
       `INSERT INTO finance_entries
-         (tipo, categoria, valor, descricao, data, criado_por, metodo_pagamento, pago_por, recorrente, fornecedor_nome, fornecedor_nif, valor_iva, taxa_iva)
-       VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, $7, $8, COALESCE($9, false), $10, $11, $12, $13) RETURNING *`,
+         (tipo, categoria, valor, descricao, data, criado_por, metodo_pagamento, pago_por, recorrente, fornecedor_nome, fornecedor_nif, valor_iva, taxa_iva, pago, data_vencimento)
+       VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, $7, $8, COALESCE($9, false), $10, $11, $12, $13, COALESCE($14, true), $15) RETURNING *`,
       [
         dto.tipo,
         dto.categoria ?? null,
@@ -80,6 +80,8 @@ export class FinanceService {
         dto.fornecedorNif ?? null,
         dto.valorIva ?? null,
         dto.taxaIva ?? null,
+        dto.pago ?? null,
+        dto.dataVencimento ?? null,
       ],
     );
     await this.audit.log(user.schemaName, {
@@ -146,6 +148,8 @@ export class FinanceService {
       fornecedor_nif: dto.fornecedorNif,
       valor_iva: dto.valorIva,
       taxa_iva: dto.taxaIva,
+      pago: dto.pago,
+      data_vencimento: dto.dataVencimento,
     };
     const columns = Object.entries(fields).filter(([, v]) => v !== undefined);
     if (columns.length === 0) return existing;
@@ -205,6 +209,64 @@ export class FinanceService {
       [id],
     );
     return updated;
+  }
+
+  // Contas a pagar/receber (secção nova, 2026-09-08) — tudo o que ainda não
+  // foi pago/recebido (`pago = false`), venha de um lançamento geral
+  // (receita ou despesa) ou de uma despesa de veículo. `atrasado` é
+  // calculado aqui (não em SQL) para usar sempre "hoje" na perspetiva do
+  // servidor, mesmo padrão de outras contagens do dashboard.
+  async contasPendentes(user: JwtPayload) {
+    const rows = await this.tenant.query<{
+      id: string;
+      origem: 'geral' | 'veiculo';
+      tipo: 'receita' | 'despesa';
+      categoria: string | null;
+      descricao: string | null;
+      veiculo: string | null;
+      veiculo_id: string | null;
+      valor: string;
+      data_vencimento: string | null;
+    }>(
+      user.schemaName,
+      `SELECT fe.id, 'geral' AS origem, fe.tipo, fe.categoria, fe.descricao, NULL AS veiculo, NULL::uuid AS veiculo_id, fe.valor, fe.data_vencimento
+       FROM finance_entries fe
+       WHERE fe.pago = false
+       UNION ALL
+       SELECT ve.id, 'veiculo' AS origem, 'despesa' AS tipo, ve.categoria, ve.descricao,
+              v.matricula || ' — ' || v.marca || ' ' || v.modelo AS veiculo, v.id AS veiculo_id, ve.valor, ve.data_vencimento
+       FROM vehicle_expenses ve
+       JOIN vehicles v ON v.id = ve.vehicle_id
+       WHERE ve.pago = false
+       ORDER BY data_vencimento NULLS LAST`,
+    );
+
+    const hoje = new Date().toISOString().slice(0, 10);
+    const itens = rows.map((r) => ({
+      id: r.id,
+      origem: r.origem,
+      tipo: r.tipo,
+      categoria: r.categoria,
+      descricao: r.descricao,
+      veiculo: r.veiculo,
+      veiculoId: r.veiculo_id,
+      valor: Number(r.valor),
+      dataVencimento: r.data_vencimento,
+      atrasado: r.data_vencimento != null && r.data_vencimento < hoje,
+    }));
+
+    const emSeteDias = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const somaSe = (filtro: (i: (typeof itens)[number]) => boolean) =>
+      itens.filter(filtro).reduce((acc, i) => acc + i.valor, 0);
+
+    return {
+      itens,
+      resumo: {
+        totalPendente: somaSe(() => true),
+        totalEmAtraso: somaSe((i) => i.atrasado),
+        totalAVencerEm7Dias: somaSe((i) => !i.atrasado && i.dataVencimento != null && i.dataVencimento <= emSeteDias),
+      },
+    };
   }
 
   // KPIs da secção 12.5 — "onde ganho dinheiro". vendedorId/marca/modelo
@@ -303,10 +365,10 @@ export class FinanceService {
         compras: string;
       }>(
         `SELECT
-           COALESCE((SELECT SUM(valor) FROM finance_entries WHERE tipo = 'receita' AND data BETWEEN $1 AND $2), 0) AS receitas,
-           COALESCE((SELECT SUM(valor) FROM finance_entries WHERE tipo = 'despesa' AND data BETWEEN $1 AND $2), 0) AS despesas_gerais,
+           COALESCE((SELECT SUM(valor) FROM finance_entries WHERE tipo = 'receita' AND pago = true AND data BETWEEN $1 AND $2), 0) AS receitas,
+           COALESCE((SELECT SUM(valor) FROM finance_entries WHERE tipo = 'despesa' AND pago = true AND data BETWEEN $1 AND $2), 0) AS despesas_gerais,
            COALESCE((SELECT SUM(preco_final) FROM sales WHERE estado = 'concluida' AND data_venda BETWEEN $1 AND $2), 0) AS vendas,
-           COALESCE((SELECT SUM(valor) FROM vehicle_expenses WHERE data BETWEEN $1 AND $2), 0) AS despesas_veiculos,
+           COALESCE((SELECT SUM(valor) FROM vehicle_expenses WHERE pago = true AND data BETWEEN $1 AND $2), 0) AS despesas_veiculos,
            COALESCE((SELECT SUM(preco_compra) FROM vehicles WHERE data_entrada_stock BETWEEN $1 AND $2), 0) AS compras`,
         [inicio, fim],
       ));
@@ -339,7 +401,7 @@ export class FinanceService {
       ({ rows: despesasGeraisPorCategoria } = await client.query<{ categoria: string | null; total: string }>(
         `SELECT categoria, SUM(valor) AS total
          FROM finance_entries
-         WHERE tipo = 'despesa' AND data BETWEEN $1 AND $2
+         WHERE tipo = 'despesa' AND pago = true AND data BETWEEN $1 AND $2
          GROUP BY categoria
          ORDER BY total DESC`,
         [inicio, fim],
@@ -352,7 +414,7 @@ export class FinanceService {
         `SELECT e.categoria, SUM(e.valor) AS total
          FROM vehicle_expenses e
          JOIN vehicles v ON v.id = e.vehicle_id
-         WHERE e.data BETWEEN $1 AND $2
+         WHERE e.pago = true AND e.data BETWEEN $1 AND $2
          -- $3 (vendedorId) não se aplica aqui de propósito (despesa não é
          -- atribuível a quem vendeu o carro) — a referência a ::uuid serve
          -- só para o Postgres conseguir inferir o tipo do parâmetro.
@@ -412,10 +474,10 @@ export class FinanceService {
        )
        SELECT
          to_char(mes, 'YYYY-MM') AS periodo,
-         COALESCE((SELECT SUM(valor) FROM finance_entries WHERE tipo = 'receita' AND date_trunc('month', data) = mes), 0) AS receitas,
-         COALESCE((SELECT SUM(valor) FROM finance_entries WHERE tipo = 'despesa' AND date_trunc('month', data) = mes), 0) AS despesas_gerais,
+         COALESCE((SELECT SUM(valor) FROM finance_entries WHERE tipo = 'receita' AND pago = true AND date_trunc('month', data) = mes), 0) AS receitas,
+         COALESCE((SELECT SUM(valor) FROM finance_entries WHERE tipo = 'despesa' AND pago = true AND date_trunc('month', data) = mes), 0) AS despesas_gerais,
          COALESCE((SELECT SUM(preco_final) FROM sales WHERE estado = 'concluida' AND date_trunc('month', data_venda) = mes), 0) AS vendas,
-         COALESCE((SELECT SUM(valor) FROM vehicle_expenses WHERE date_trunc('month', data) = mes), 0) AS despesas_veiculos,
+         COALESCE((SELECT SUM(valor) FROM vehicle_expenses WHERE pago = true AND date_trunc('month', data) = mes), 0) AS despesas_veiculos,
          COALESCE((SELECT SUM(preco_compra) FROM vehicles WHERE date_trunc('month', data_entrada_stock) = mes), 0) AS compras,
          COALESCE((SELECT COUNT(*) FROM sales WHERE estado = 'concluida' AND date_trunc('month', data_venda) = mes), 0) AS num_vendas
        FROM meses

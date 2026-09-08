@@ -94,11 +94,14 @@ export class FinanceStatementService {
       // people vive na BD central (schema "public") — join cross-schema com
       // nome totalmente qualificado, mesmo padrão já usado em
       // finance.service.ts::summary() (ranking de vendedores).
+      // Extrato reflete movimentos de caixa reais deste mês — uma despesa/
+      // receita pendente (`pago = false`, ver secção "contas a pagar")
+      // ainda não é dinheiro que se moveu, fica de fora até ser paga.
       ({ rows: entryRows } = await client.query(
         `SELECT fe.*, p.nome AS pago_por_nome
          FROM finance_entries fe
          LEFT JOIN public.people p ON p.id = fe.pago_por
-         WHERE fe.data BETWEEN $1 AND $2
+         WHERE fe.pago = true AND fe.data BETWEEN $1 AND $2
          ORDER BY fe.data`,
         [inicio, fim],
       ));
@@ -108,7 +111,7 @@ export class FinanceStatementService {
          FROM vehicle_expenses ve
          JOIN vehicles v ON v.id = ve.vehicle_id
          LEFT JOIN public.people p ON p.id = ve.pago_por
-         WHERE ve.data BETWEEN $1 AND $2
+         WHERE ve.pago = true AND ve.data BETWEEN $1 AND $2
          ORDER BY ve.data`,
         [inicio, fim],
       ));

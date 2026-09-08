@@ -46,4 +46,13 @@ export class CreateExpenseDto {
   @IsNumber()
   @Min(0)
   taxaIva?: number;
+
+  // Contas a pagar — mesma razão de CreateFinanceEntryDto.
+  @IsOptional()
+  @IsBoolean()
+  pago?: boolean;
+
+  @IsOptional()
+  @IsDateString()
+  dataVencimento?: string;
 }

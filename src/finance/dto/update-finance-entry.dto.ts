@@ -62,4 +62,14 @@ export class UpdateFinanceEntryDto {
   @IsNumber()
   @Min(0)
   taxaIva?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  pago?: boolean;
+
+  // `null` explícito = limpar a data de vencimento (ex.: ao marcar como
+  // pago já não faz sentido continuar a mostrar "vence em X").
+  @IsOptional()
+  @IsDateString()
+  dataVencimento?: string | null;
 }

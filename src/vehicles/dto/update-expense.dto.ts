@@ -52,4 +52,12 @@ export class UpdateExpenseDto {
   @IsNumber()
   @Min(0)
   taxaIva?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  pago?: boolean;
+
+  @IsOptional()
+  @IsDateString()
+  dataVencimento?: string | null;
 }

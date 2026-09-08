@@ -78,7 +78,16 @@ CREATE TABLE vehicle_expenses (
   fornecedor_nome TEXT,
   fornecedor_nif TEXT,
   valor_iva NUMERIC(10,2),
-  taxa_iva NUMERIC(4,2)
+  taxa_iva NUMERIC(4,2),
+  -- Contas a pagar (secção nova, 2026-09-08): `pago = true` por omissão
+  -- preserva o significado de sempre (uma despesa é algo que já aconteceu).
+  -- `pago = false` + `data_vencimento` representa uma despesa futura ainda
+  -- por pagar — excluída do cashflow/extrato até ser marcada como paga
+  -- (summary()/evolution()/finance-statement.service.ts filtram sempre
+  -- `pago = true`, senão uma despesa planeada mas não paga ainda inflacionava
+  -- o cashflow do mês em que foi lançada).
+  pago BOOLEAN NOT NULL DEFAULT true,
+  data_vencimento DATE
 );
 
 CREATE INDEX idx_vehicle_expenses_vehicle ON vehicle_expenses(vehicle_id);
@@ -156,7 +165,13 @@ CREATE TABLE finance_entries (
   fornecedor_nome TEXT,
   fornecedor_nif TEXT,
   valor_iva NUMERIC(10,2),
-  taxa_iva NUMERIC(4,2)
+  taxa_iva NUMERIC(4,2),
+  -- Contas a pagar/receber — mesma extensão de vehicle_expenses acima.
+  -- Aplica-se aos dois tipos (`receita`/`despesa`): uma receita pendente é
+  -- "vou receber X até dia Y", uma despesa pendente é "vou ter de pagar X
+  -- até dia Y".
+  pago BOOLEAN NOT NULL DEFAULT true,
+  data_vencimento DATE
 );
 
 CREATE TABLE market_estimates (
