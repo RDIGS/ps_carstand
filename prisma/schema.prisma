@@ -90,6 +90,7 @@ model Stand {
   morada                      String?
   contacto                    String?
   redesSociais                String?     @map("redes_sociais")
+  logoUrl                     String?     @map("logo_url")
   schemaName                  String      @unique @map("schema_name")
   token                       String      @unique
   tokenEstado                 TokenEstado @default(pendente) @map("token_estado")

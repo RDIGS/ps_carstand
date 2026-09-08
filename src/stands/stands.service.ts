@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantService } from '../tenant/tenant.service';
+import { StorageService } from '../storage/storage.service';
 import { CreateStandDto } from './dto/create-stand.dto';
 import { UpdateStandDto } from './dto/update-stand.dto';
 import { UpdateStandTokenDto } from './dto/update-stand-token.dto';
@@ -15,6 +16,7 @@ export class StandsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenant: TenantService,
+    private readonly storage: StorageService,
   ) {}
 
   async create(dto: CreateStandDto) {
@@ -58,7 +60,7 @@ export class StandsService {
   getProfile(standId: string) {
     return this.prisma.stand.findUniqueOrThrow({
       where: { id: standId },
-      select: { id: true, nome: true, contacto: true, redesSociais: true },
+      select: { id: true, nome: true, contacto: true, redesSociais: true, logoUrl: true },
     });
   }
 
@@ -69,7 +71,29 @@ export class StandsService {
         contacto: dto.contacto,
         redesSociais: dto.redesSociais,
       },
-      select: { id: true, nome: true, contacto: true, redesSociais: true },
+      select: { id: true, nome: true, contacto: true, redesSociais: true, logoUrl: true },
+    });
+  }
+
+  // Logótipo do stand para o gerador de banner de venda (secção nova, pedido
+  // do utilizador 2026-09-07) — caminho fixo (não um UUID por upload, ao
+  // contrário das fotos do veículo) porque só existe UM logótipo por stand;
+  // `x-upsert` no StorageService substitui sempre o anterior, sem deixar
+  // ficheiros órfãos no bucket.
+  async uploadLogo(standId: string, logo: Buffer) {
+    const url = await this.storage.upload(`stands/${standId}/logo.jpg`, logo, 'image/jpeg');
+    return this.prisma.stand.update({
+      where: { id: standId },
+      data: { logoUrl: url },
+      select: { id: true, nome: true, contacto: true, redesSociais: true, logoUrl: true },
+    });
+  }
+
+  removeLogo(standId: string) {
+    return this.prisma.stand.update({
+      where: { id: standId },
+      data: { logoUrl: null },
+      select: { id: true, nome: true, contacto: true, redesSociais: true, logoUrl: true },
     });
   }
 
