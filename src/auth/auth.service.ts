@@ -113,6 +113,13 @@ export class AuthService {
       this.prisma.stand.findUniqueOrThrow({ where: { id: existing.standId } }),
     ]);
     this.assertStandAccessible(stand);
+    // Sem isto, desativar/remover um membro (TeamService.update/remove) não
+    // cortava o acesso a sério: o refresh token continuava válido até
+    // expirar sozinho (30 dias por omissão) e emitia sempre um JWT novo e
+    // funcional — só o login() verificava isto, nunca o refresh().
+    if (!membership.ativo || !person.ativo) {
+      throw new UnauthorizedException({ error: 'sessao_invalida', message: 'Sessão expirada, inicia sessão novamente.' });
+    }
 
     const newRawToken = generateOpaqueToken();
     const newTokenHash = hashToken(newRawToken);

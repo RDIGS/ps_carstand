@@ -69,6 +69,16 @@ export class TeamService {
       where: { id: memberId },
       data: { role: dto.role, ativo: dto.ativo },
     });
+    // Desativar um membro tem de cortar o acesso a sério e já, não só
+    // impedir logins novos — sem isto o refresh token dele continuava a
+    // emitir JWTs novos e válidos até expirar sozinho (30 dias por
+    // omissão). Mesmo padrão já usado em resetPassword() abaixo.
+    if (updated.ativo === false) {
+      await this.prisma.refreshToken.updateMany({
+        where: { personId: membership.personId, standId: user.standId, revogado: false },
+        data: { revogado: true },
+      });
+    }
 
     await this.audit.log(user.schemaName, {
       entidade: 'stand_member',
@@ -124,6 +134,11 @@ export class TeamService {
     if (!membership) throw new NotFoundException({ error: 'nao_encontrado', message: 'Membro não encontrado.' });
 
     await this.prisma.standMember.delete({ where: { id: memberId } });
+    // Mesma razão de update(): remover tem de cortar sessões já ativas.
+    await this.prisma.refreshToken.updateMany({
+      where: { personId: membership.personId, standId: user.standId, revogado: false },
+      data: { revogado: true },
+    });
 
     await this.audit.log(user.schemaName, {
       entidade: 'stand_member',
@@ -164,13 +179,29 @@ export class TeamService {
   async updateByStandId(standId: string, memberId: string, dto: UpdateMemberDto) {
     const membership = await this.prisma.standMember.findFirst({ where: { id: memberId, standId } });
     if (!membership) throw new NotFoundException({ error: 'nao_encontrado', message: 'Membro não encontrado.' });
-    return this.prisma.standMember.update({ where: { id: memberId }, data: { role: dto.role, ativo: dto.ativo } });
+    const updated = await this.prisma.standMember.update({
+      where: { id: memberId },
+      data: { role: dto.role, ativo: dto.ativo },
+    });
+    // Mesma razão de update() acima.
+    if (updated.ativo === false) {
+      await this.prisma.refreshToken.updateMany({
+        where: { personId: membership.personId, standId, revogado: false },
+        data: { revogado: true },
+      });
+    }
+    return updated;
   }
 
   async removeByStandId(standId: string, memberId: string) {
     const membership = await this.prisma.standMember.findFirst({ where: { id: memberId, standId } });
     if (!membership) throw new NotFoundException({ error: 'nao_encontrado', message: 'Membro não encontrado.' });
     await this.prisma.standMember.delete({ where: { id: memberId } });
+    // Mesma razão de remove() acima.
+    await this.prisma.refreshToken.updateMany({
+      where: { personId: membership.personId, standId, revogado: false },
+      data: { revogado: true },
+    });
   }
 
   // Só o super-admin (painel de plataforma) gera isto — resolve o caso do
