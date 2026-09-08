@@ -41,11 +41,20 @@ const CABECALHO = [
   'comprovativo_url',
 ];
 
+// Mitigação padrão de "CSV/Formula Injection" (OWASP): um valor de texto
+// livre (descrição, fornecedor, contraparte...) que comece por =/+/-/@ ou
+// tab é interpretado como fórmula pelo Excel/Sheets ao abrir o ficheiro —
+// grave neste caso porque `fornecedorNome` pode vir pré-preenchido sem
+// revisão a partir da leitura automática de uma fatura fotografada
+// (POST /finance/extract-invoice), um canal que um atacante podia moldar.
+// Prefixar com uma plica neutraliza a fórmula sem alterar o texto visível.
+const PREFIXO_FORMULA = /^[=+\-@\t\r]/;
 function escapar(valor: string): string {
-  if (valor.includes(',') || valor.includes('"') || valor.includes('\n')) {
-    return `"${valor.replace(/"/g, '""')}"`;
+  const segura = PREFIXO_FORMULA.test(valor) ? `'${valor}` : valor;
+  if (segura.includes(',') || segura.includes('"') || segura.includes('\n')) {
+    return `"${segura.replace(/"/g, '""')}"`;
   }
-  return valor;
+  return segura;
 }
 
 export function generateExtratoMensalCsv(linhas: ExtratoCsvLinha[]): Buffer {
