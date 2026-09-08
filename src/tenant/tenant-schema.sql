@@ -269,6 +269,11 @@ CREATE TABLE calendar_events (
   lead_id UUID REFERENCES leads(id) ON DELETE SET NULL,
   criado_por UUID NOT NULL,
   concluido BOOLEAN NOT NULL DEFAULT false,
+  -- UID do VEVENT de origem quando o evento veio de uma importação .ics
+  -- (Google/iOS/Outlook) — NULL para eventos criados na app. Postgres trata
+  -- NULLs como distintos num UNIQUE, por isso não precisa de índice parcial;
+  -- serve só para o import não duplicar o mesmo evento em reimportações.
+  external_uid TEXT UNIQUE,
   criado_em TIMESTAMPTZ DEFAULT now(),
   atualizado_em TIMESTAMPTZ DEFAULT now()
 );

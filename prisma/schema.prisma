@@ -104,6 +104,10 @@ model Stand {
   vendedorPodeEditarPrecoKms  Boolean     @default(false) @map("vendedor_pode_editar_preco_kms")
   vendedorPrecisaAprovacao    Boolean     @default(true) @map("vendedor_precisa_aprovacao")
   criadoEm                    DateTime    @default(now()) @map("criado_em")
+  // Token do link .ics subscritível com o calendário do stand inteiro
+  // (secção calendário, 2026-09-08) — gerado sob pedido (nunca partilhado
+  // por omissão), nunca reaproveitar o `token` de acesso do stand para isto.
+  calendarFeedToken           String?     @unique @map("calendar_feed_token")
 
   members     StandMember[]
   suggestions Suggestion[]
@@ -152,6 +156,10 @@ model StandMember {
   role     MemberRole
   ativo    Boolean    @default(true)
   criadoEm DateTime   @default(now()) @map("criado_em")
+  // Token do link .ics subscritível só com os eventos desta pessoa neste
+  // stand ("meus eventos") — ver Stand.calendarFeedToken para o do stand
+  // inteiro.
+  calendarFeedToken String? @unique @map("calendar_feed_token")
 
   stand  Stand  @relation(fields: [standId], references: [id], onDelete: Cascade)
   person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
