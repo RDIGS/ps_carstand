@@ -36,8 +36,29 @@ export class FinanceRecurringCron {
 
     const stands = await this.prisma.stand.findMany({ select: { schemaName: true } });
     for (const stand of stands) {
-      const inseridos = await this.tenant.query(
-        stand.schemaName,
+      await this.gerarLancamentosDoStand(stand.schemaName, inicioMesAnterior, fimMesAnterior, dataMesAtual);
+    }
+  }
+
+  // Isolado por stand + transação própria: o `NOT EXISTS` sozinho não trava
+  // 2 execuções concorrentes deste método para o mesmo stand/mês (nenhuma
+  // vê o INSERT ainda não commitado da outra) — um redeploy a coincidir com
+  // o `@Cron` das 00:00 do dia 1, ou mais do que 1 réplica do processo,
+  // duplicava o lançamento recorrente. `pg_advisory_xact_lock` serializa as
+  // 2 execuções (a 2ª espera a 1ª libertar o lock no COMMIT/ROLLBACK) sem
+  // precisar de um índice único a lidar com `categoria`/`descricao` NULL.
+  private async gerarLancamentosDoStand(
+    schemaName: string,
+    inicioMesAnterior: string,
+    fimMesAnterior: string,
+    dataMesAtual: string,
+  ): Promise<void> {
+    const client = await this.tenant.getClient(schemaName);
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`finance_recurring:${dataMesAtual}`]);
+
+      const inseridos = await client.query(
         `INSERT INTO finance_entries (tipo, categoria, valor, descricao, data, criado_por, metodo_pagamento, pago_por, recorrente)
          SELECT origem.tipo, origem.categoria, origem.valor, origem.descricao, $3::date, origem.criado_por,
                 origem.metodo_pagamento, origem.pago_por, true
@@ -54,9 +75,16 @@ export class FinanceRecurringCron {
          RETURNING id`,
         [inicioMesAnterior, fimMesAnterior, dataMesAtual],
       );
-      if (inseridos.length > 0) {
-        this.logger.log(`${stand.schemaName}: ${inseridos.length} lançamento(s) recorrente(s) gerado(s).`);
+
+      await client.query('COMMIT');
+      if (inseridos.rows.length > 0) {
+        this.logger.log(`${schemaName}: ${inseridos.rows.length} lançamento(s) recorrente(s) gerado(s).`);
       }
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
   }
 }
