@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { TenantService } from '../tenant/tenant.service';
 import { AuditService } from '../audit/audit.service';
 import { StorageService } from '../storage/storage.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreateFinanceEntryDto } from './dto/create-finance-entry.dto';
 import { UpdateFinanceEntryDto } from './dto/update-finance-entry.dto';
 import { FinanceSummaryQueryDto } from './dto/finance-summary-query.dto';
@@ -38,9 +39,28 @@ export class FinanceService {
     private readonly tenant: TenantService,
     private readonly audit: AuditService,
     private readonly storage: StorageService,
+    private readonly prisma: PrismaService,
   ) {}
 
+  // `pago_por` é um UUID solto (sem FK, ver tenant-schema.sql) — sem isto
+  // aceitava qualquer UUID de `public.people`, mesmo de alguém sem ligação
+  // nenhuma a este stand, e mostrava o nome dessa pessoa no extrato/detalhe
+  // (achado de baixa gravidade da auditoria de segurança, corrigido a
+  // pedido do utilizador). Mesma verificação que `TeamService` já faz para
+  // outras operações sobre membros da equipa.
+  private async assertPagoPorValido(standId: string, pagoPor?: string | null): Promise<void> {
+    if (!pagoPor) return;
+    const membro = await this.prisma.standMember.findFirst({ where: { personId: pagoPor, standId } });
+    if (!membro) {
+      throw new BadRequestException({
+        error: 'pago_por_invalido',
+        message: 'A pessoa selecionada não faz parte da equipa deste stand.',
+      });
+    }
+  }
+
   async createEntry(user: JwtPayload, dto: CreateFinanceEntryDto) {
+    await this.assertPagoPorValido(user.standId, dto.pagoPor);
     const [entry] = await this.tenant.query(
       user.schemaName,
       `INSERT INTO finance_entries
@@ -110,6 +130,7 @@ export class FinanceService {
   async updateEntry(user: JwtPayload, id: string, dto: UpdateFinanceEntryDto) {
     const [existing] = await this.tenant.query(user.schemaName, `SELECT * FROM finance_entries WHERE id = $1`, [id]);
     if (!existing) throw new NotFoundException({ error: 'nao_encontrado', message: 'Lançamento não encontrado.' });
+    await this.assertPagoPorValido(user.standId, dto.pagoPor);
 
     const fields: Record<string, unknown> = {
       tipo: dto.tipo,

@@ -228,8 +228,24 @@ export class VehiclesService {
     return updated;
   }
 
+  // `pago_por` é um UUID solto (sem FK, ver tenant-schema.sql) — sem isto
+  // aceitava qualquer UUID de `public.people`, mesmo de alguém sem ligação
+  // nenhuma a este stand (achado de baixa gravidade da auditoria de
+  // segurança). Mesma verificação em `FinanceService`.
+  private async assertPagoPorValido(standId: string, pagoPor?: string | null): Promise<void> {
+    if (!pagoPor) return;
+    const membro = await this.prisma.standMember.findFirst({ where: { personId: pagoPor, standId } });
+    if (!membro) {
+      throw new BadRequestException({
+        error: 'pago_por_invalido',
+        message: 'A pessoa selecionada não faz parte da equipa deste stand.',
+      });
+    }
+  }
+
   async addExpense(user: JwtPayload, vehicleId: string, dto: CreateExpenseDto) {
     await this.findOne(user, vehicleId);
+    await this.assertPagoPorValido(user.standId, dto.pagoPor);
     const expense = await this.repo.addExpense(user.schemaName, vehicleId, dto, user.sub);
     await this.audit.log(user.schemaName, {
       entidade: 'vehicle_expense',
@@ -250,6 +266,7 @@ export class VehiclesService {
     await this.findOne(user, vehicleId);
     const existing = await this.repo.findExpenseById(user.schemaName, vehicleId, expenseId);
     if (!existing) throw new NotFoundException({ error: 'nao_encontrado', message: 'Despesa não encontrada.' });
+    await this.assertPagoPorValido(user.standId, dto.pagoPor);
 
     const updated = await this.repo.updateExpense(user.schemaName, expenseId, {
       categoria: dto.categoria,
