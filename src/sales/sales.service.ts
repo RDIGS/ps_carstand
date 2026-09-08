@@ -316,18 +316,30 @@ export class SalesService {
     return { id: saleId, estado: 'revertida', vehicle_estado: 'disponivel' };
   }
 
+  // Junta matrícula/marca/modelo do veículo e nome do vendedor (BD central,
+  // join cross-schema — mesmo padrão de finance.service.ts::summary()) para
+  // o ecrã de detalhe da venda não precisar de pedidos extra.
+  private static readonly SELECT_COM_DETALHE = `
+    SELECT s.*, v.matricula, v.marca, v.modelo, p.nome AS vendedor_nome
+    FROM sales s
+    JOIN vehicles v ON v.id = s.vehicle_id
+    LEFT JOIN public.people p ON p.id = s.vendedor_id
+  `;
+
   async list(user: JwtPayload, vendedorIdFilter?: string) {
     // Vendedor só vê "as minhas vendas" (V7), mesmo que tente filtrar por outro vendedor_id.
     const vendedorId = user.role === 'vendedor' ? user.sub : vendedorIdFilter;
 
     if (vendedorId) {
-      return this.tenant.query(user.schemaName, `SELECT * FROM sales WHERE vendedor_id = $1 ORDER BY data_venda DESC`, [
-        vendedorId,
-      ]);
+      return this.tenant.query(
+        user.schemaName,
+        `${SalesService.SELECT_COM_DETALHE} WHERE s.vendedor_id = $1 ORDER BY s.data_venda DESC`,
+        [vendedorId],
+      );
     }
     if (user.role !== 'owner') {
       throw new ForbiddenException({ error: 'sem_permissao', message: 'Só o owner pode ver todas as vendas.' });
     }
-    return this.tenant.query(user.schemaName, `SELECT * FROM sales ORDER BY data_venda DESC`);
+    return this.tenant.query(user.schemaName, `${SalesService.SELECT_COM_DETALHE} ORDER BY s.data_venda DESC`);
   }
 }

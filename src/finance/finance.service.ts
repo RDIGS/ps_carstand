@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { TenantService } from '../tenant/tenant.service';
 import { AuditService } from '../audit/audit.service';
+import { StorageService } from '../storage/storage.service';
 import { CreateFinanceEntryDto } from './dto/create-finance-entry.dto';
 import { UpdateFinanceEntryDto } from './dto/update-finance-entry.dto';
 import { FinanceSummaryQueryDto } from './dto/finance-summary-query.dto';
@@ -36,14 +37,30 @@ export class FinanceService {
   constructor(
     private readonly tenant: TenantService,
     private readonly audit: AuditService,
+    private readonly storage: StorageService,
   ) {}
 
   async createEntry(user: JwtPayload, dto: CreateFinanceEntryDto) {
     const [entry] = await this.tenant.query(
       user.schemaName,
-      `INSERT INTO finance_entries (tipo, categoria, valor, descricao, data, criado_por)
-       VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6) RETURNING *`,
-      [dto.tipo, dto.categoria ?? null, dto.valor, dto.descricao ?? null, dto.data ?? null, user.sub],
+      `INSERT INTO finance_entries
+         (tipo, categoria, valor, descricao, data, criado_por, metodo_pagamento, pago_por, recorrente, fornecedor_nome, fornecedor_nif, valor_iva, taxa_iva)
+       VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, $7, $8, COALESCE($9, false), $10, $11, $12, $13) RETURNING *`,
+      [
+        dto.tipo,
+        dto.categoria ?? null,
+        dto.valor,
+        dto.descricao ?? null,
+        dto.data ?? null,
+        user.sub,
+        dto.metodoPagamento ?? null,
+        dto.pagoPor ?? null,
+        dto.recorrente ?? null,
+        dto.fornecedorNome ?? null,
+        dto.fornecedorNif ?? null,
+        dto.valorIva ?? null,
+        dto.taxaIva ?? null,
+      ],
     );
     await this.audit.log(user.schemaName, {
       entidade: 'finance_entry',
@@ -62,21 +79,27 @@ export class FinanceService {
 
     const params = [query.dataInicio ?? null, query.dataFim ?? null, query.tipo ?? null, query.categoria ?? null];
     const where = `
-      ($1::date IS NULL OR data >= $1) AND
-      ($2::date IS NULL OR data <= $2) AND
-      ($3::text IS NULL OR tipo = $3) AND
-      ($4::text IS NULL OR categoria = $4)
+      ($1::date IS NULL OR fe.data >= $1) AND
+      ($2::date IS NULL OR fe.data <= $2) AND
+      ($3::text IS NULL OR fe.tipo = $3) AND
+      ($4::text IS NULL OR fe.categoria = $4)
     `;
 
     const [rows, countRows] = await Promise.all([
       this.tenant.query(
         user.schemaName,
-        `SELECT * FROM finance_entries WHERE ${where} ORDER BY data DESC, criado_em DESC LIMIT $5 OFFSET $6`,
+        // people vive na BD central — join cross-schema, mesmo padrão de
+        // finance-statement.service.ts (nome de quem pagou, para o ecrã de
+        // detalhe do lançamento não precisar de pedidos extra).
+        `SELECT fe.*, p.nome AS pago_por_nome
+         FROM finance_entries fe
+         LEFT JOIN public.people p ON p.id = fe.pago_por
+         WHERE ${where} ORDER BY fe.data DESC, fe.criado_em DESC LIMIT $5 OFFSET $6`,
         [...params, limit, offset],
       ),
       this.tenant.query<{ total: string }>(
         user.schemaName,
-        `SELECT COUNT(*) AS total FROM finance_entries WHERE ${where}`,
+        `SELECT COUNT(*) AS total FROM finance_entries fe WHERE ${where}`,
         params,
       ),
     ]);
@@ -94,6 +117,14 @@ export class FinanceService {
       valor: dto.valor,
       descricao: dto.descricao,
       data: dto.data,
+      metodo_pagamento: dto.metodoPagamento,
+      pago_por: dto.pagoPor,
+      recorrente: dto.recorrente,
+      reembolsado: dto.reembolsado,
+      fornecedor_nome: dto.fornecedorNome,
+      fornecedor_nif: dto.fornecedorNif,
+      valor_iva: dto.valorIva,
+      taxa_iva: dto.taxaIva,
     };
     const columns = Object.entries(fields).filter(([, v]) => v !== undefined);
     if (columns.length === 0) return existing;
@@ -128,6 +159,31 @@ export class FinanceService {
       valorAnterior: existing,
       feitoPor: user.sub,
     });
+  }
+
+  async uploadComprovativo(user: JwtPayload, id: string, foto: Buffer) {
+    const [existing] = await this.tenant.query(user.schemaName, `SELECT * FROM finance_entries WHERE id = $1`, [id]);
+    if (!existing) throw new NotFoundException({ error: 'nao_encontrado', message: 'Lançamento não encontrado.' });
+
+    const url = await this.storage.upload(`${user.schemaName}/finance/${id}/comprovativo.jpg`, foto, 'image/jpeg');
+    const [updated] = await this.tenant.query(
+      user.schemaName,
+      `UPDATE finance_entries SET comprovativo_url = $2 WHERE id = $1 RETURNING *`,
+      [id, url],
+    );
+    return updated;
+  }
+
+  async removeComprovativo(user: JwtPayload, id: string) {
+    const [existing] = await this.tenant.query(user.schemaName, `SELECT * FROM finance_entries WHERE id = $1`, [id]);
+    if (!existing) throw new NotFoundException({ error: 'nao_encontrado', message: 'Lançamento não encontrado.' });
+
+    const [updated] = await this.tenant.query(
+      user.schemaName,
+      `UPDATE finance_entries SET comprovativo_url = NULL WHERE id = $1 RETURNING *`,
+      [id],
+    );
+    return updated;
   }
 
   // KPIs da secção 12.5 — "onde ganho dinheiro". vendedorId/marca/modelo

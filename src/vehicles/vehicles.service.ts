@@ -6,6 +6,8 @@ import { AuditService } from '../audit/audit.service';
 import { StorageService } from '../storage/storage.service';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { UpdateVehicleDto, CAMPOS_EDITAVEIS_POR_VENDEDOR } from './dto/update-vehicle.dto';
+import { CreateExpenseDto } from './dto/create-expense.dto';
+import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { JwtPayload } from '../common/types/jwt-payload.interface';
 
 const ESTADOS_VISIVEIS_VENDEDOR = ['disponivel', 'reservado', 'pendente_aprovacao'];
@@ -226,9 +228,9 @@ export class VehiclesService {
     return updated;
   }
 
-  async addExpense(user: JwtPayload, vehicleId: string, categoria: string, descricao: string | undefined, valor: number) {
+  async addExpense(user: JwtPayload, vehicleId: string, dto: CreateExpenseDto) {
     await this.findOne(user, vehicleId);
-    const expense = await this.repo.addExpense(user.schemaName, vehicleId, categoria, descricao ?? null, valor, user.sub);
+    const expense = await this.repo.addExpense(user.schemaName, vehicleId, dto, user.sub);
     await this.audit.log(user.schemaName, {
       entidade: 'vehicle_expense',
       entidadeId: expense.id,
@@ -244,17 +246,24 @@ export class VehiclesService {
     return this.repo.listExpenses(user.schemaName, vehicleId);
   }
 
-  async updateExpense(
-    user: JwtPayload,
-    vehicleId: string,
-    expenseId: string,
-    fields: { categoria?: string; descricao?: string; valor?: number },
-  ) {
+  async updateExpense(user: JwtPayload, vehicleId: string, expenseId: string, dto: UpdateExpenseDto) {
     await this.findOne(user, vehicleId);
     const existing = await this.repo.findExpenseById(user.schemaName, vehicleId, expenseId);
     if (!existing) throw new NotFoundException({ error: 'nao_encontrado', message: 'Despesa não encontrada.' });
 
-    const updated = await this.repo.updateExpense(user.schemaName, expenseId, fields);
+    const updated = await this.repo.updateExpense(user.schemaName, expenseId, {
+      categoria: dto.categoria,
+      descricao: dto.descricao,
+      valor: dto.valor,
+      data: dto.data,
+      metodo_pagamento: dto.metodoPagamento,
+      pago_por: dto.pagoPor,
+      reembolsado: dto.reembolsado,
+      fornecedor_nome: dto.fornecedorNome,
+      fornecedor_nif: dto.fornecedorNif,
+      valor_iva: dto.valorIva,
+      taxa_iva: dto.taxaIva,
+    });
     await this.audit.log(user.schemaName, {
       entidade: 'vehicle_expense',
       entidadeId: expenseId,
@@ -279,6 +288,27 @@ export class VehiclesService {
       valorAnterior: existing,
       feitoPor: user.sub,
     });
+  }
+
+  async uploadExpenseComprovativo(user: JwtPayload, vehicleId: string, expenseId: string, foto: Buffer) {
+    await this.findOne(user, vehicleId);
+    const existing = await this.repo.findExpenseById(user.schemaName, vehicleId, expenseId);
+    if (!existing) throw new NotFoundException({ error: 'nao_encontrado', message: 'Despesa não encontrada.' });
+
+    const url = await this.storage.upload(
+      `${user.schemaName}/vehicles/${vehicleId}/expenses/${expenseId}/comprovativo.jpg`,
+      foto,
+      'image/jpeg',
+    );
+    return this.repo.updateExpense(user.schemaName, expenseId, { comprovativo_url: url });
+  }
+
+  async removeExpenseComprovativo(user: JwtPayload, vehicleId: string, expenseId: string) {
+    await this.findOne(user, vehicleId);
+    const existing = await this.repo.findExpenseById(user.schemaName, vehicleId, expenseId);
+    if (!existing) throw new NotFoundException({ error: 'nao_encontrado', message: 'Despesa não encontrada.' });
+
+    return this.repo.updateExpense(user.schemaName, expenseId, { comprovativo_url: null });
   }
 
   // Só chamado quando o utilizador confirma que as fotos do DUA já estavam

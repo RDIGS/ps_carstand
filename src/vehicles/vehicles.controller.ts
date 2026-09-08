@@ -133,7 +133,7 @@ export class VehiclesController {
   @Post(':id/expenses')
   @Roles('owner')
   addExpense(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateExpenseDto) {
-    return this.vehiclesService.addExpense(user, id, dto.categoria, dto.descricao, dto.valor);
+    return this.vehiclesService.addExpense(user, id, dto);
   }
 
   @Get(':id/expenses')
@@ -162,6 +162,34 @@ export class VehiclesController {
     @Param('expenseId', ParseUUIDPipe) expenseId: string,
   ) {
     return this.vehiclesService.removeExpense(user, id, expenseId);
+  }
+
+  // Comprovativo/fatura da despesa — mesmo padrão do upload de fotos.
+  @Post(':id/expenses/:expenseId/comprovativo')
+  @Roles('owner')
+  @Throttle({ default: { limit: 60, ttl: 3_600_000 } })
+  @UseInterceptors(FileInterceptor('foto', { storage: memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } }))
+  uploadExpenseComprovativo(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('expenseId', ParseUUIDPipe) expenseId: string,
+    @UploadedFile() foto?: Express.Multer.File,
+  ) {
+    if (!foto) {
+      return { error: 'campos_em_falta', message: 'É necessário enviar uma imagem.' };
+    }
+    assertIsImageBuffer(foto.buffer);
+    return this.vehiclesService.uploadExpenseComprovativo(user, id, expenseId, foto.buffer);
+  }
+
+  @Delete(':id/expenses/:expenseId/comprovativo')
+  @Roles('owner')
+  removeExpenseComprovativo(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('expenseId', ParseUUIDPipe) expenseId: string,
+  ) {
+    return this.vehiclesService.removeExpenseComprovativo(user, id, expenseId);
   }
 
   // Só chamado quando o utilizador confirma que as fotos do DUA já estavam

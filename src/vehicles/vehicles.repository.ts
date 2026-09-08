@@ -143,12 +143,42 @@ export class VehiclesRepository {
     return rows[0] ?? null;
   }
 
-  async addExpense(schemaName: string, vehicleId: string, categoria: string, descricao: string | null, valor: number, criadoPor: string) {
+  async addExpense(
+    schemaName: string,
+    vehicleId: string,
+    dto: {
+      categoria: string;
+      descricao?: string;
+      valor: number;
+      data?: string;
+      metodoPagamento?: string;
+      pagoPor?: string;
+      fornecedorNome?: string;
+      fornecedorNif?: string;
+      valorIva?: number;
+      taxaIva?: number;
+    },
+    criadoPor: string,
+  ) {
     const rows = await this.tenant.query(
       schemaName,
-      `INSERT INTO vehicle_expenses (vehicle_id, categoria, descricao, valor, criado_por)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [vehicleId, categoria, descricao, valor, criadoPor],
+      `INSERT INTO vehicle_expenses
+         (vehicle_id, categoria, descricao, valor, data, criado_por, metodo_pagamento, pago_por, fornecedor_nome, fornecedor_nif, valor_iva, taxa_iva)
+       VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+      [
+        vehicleId,
+        dto.categoria,
+        dto.descricao ?? null,
+        dto.valor,
+        dto.data ?? null,
+        criadoPor,
+        dto.metodoPagamento ?? null,
+        dto.pagoPor ?? null,
+        dto.fornecedorNome ?? null,
+        dto.fornecedorNif ?? null,
+        dto.valorIva ?? null,
+        dto.taxaIva ?? null,
+      ],
     );
     return rows[0];
   }
@@ -165,7 +195,20 @@ export class VehiclesRepository {
   async updateExpense(
     schemaName: string,
     expenseId: string,
-    fields: { categoria?: string; descricao?: string; valor?: number },
+    fields: {
+      categoria?: string;
+      descricao?: string;
+      valor?: number;
+      data?: string;
+      metodo_pagamento?: string | null;
+      pago_por?: string | null;
+      reembolsado?: boolean;
+      comprovativo_url?: string | null;
+      fornecedor_nome?: string | null;
+      fornecedor_nif?: string | null;
+      valor_iva?: number | null;
+      taxa_iva?: number | null;
+    },
   ) {
     const columns = Object.entries(fields).filter(([, v]) => v !== undefined);
     if (columns.length === 0) {

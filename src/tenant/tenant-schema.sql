@@ -61,7 +61,24 @@ CREATE TABLE vehicle_expenses (
   valor NUMERIC(10,2) NOT NULL,
   data DATE DEFAULT CURRENT_DATE,
   criado_por UUID NOT NULL,
-  criado_em TIMESTAMPTZ DEFAULT now()
+  criado_em TIMESTAMPTZ DEFAULT now(),
+  -- Comprovativo/fatura + rastreio de quem pagou (secção nova, 2026-09-07):
+  -- `pago_por` é um UUID solto (sem FK — schemas de tenant não conseguem
+  -- referenciar `public.people` entre schemas), `NULL` = pago diretamente
+  -- pela empresa. `reembolsado` só é relevante quando `pago_por` está
+  -- preenchido (colaborador pagou do próprio bolso, empresa deve-lhe).
+  comprovativo_url TEXT,
+  metodo_pagamento TEXT CHECK (metodo_pagamento IN ('numerario','transferencia','multibanco','cartao','cheque','outro')),
+  pago_por UUID,
+  reembolsado BOOLEAN NOT NULL DEFAULT false,
+  -- Dados fiscais do comprovativo (secção nova, 2026-09-08) — pré-preenchidos
+  -- pela leitura automática da fatura (OcrModule/InvoiceExtractionService),
+  -- mas sempre editáveis à mão. É o que a contabilista precisa mesmo para
+  -- lançar a despesa e deduzir IVA, não só o valor total.
+  fornecedor_nome TEXT,
+  fornecedor_nif TEXT,
+  valor_iva NUMERIC(10,2),
+  taxa_iva NUMERIC(4,2)
 );
 
 CREATE INDEX idx_vehicle_expenses_vehicle ON vehicle_expenses(vehicle_id);
@@ -126,7 +143,20 @@ CREATE TABLE finance_entries (
   descricao TEXT,
   data DATE DEFAULT CURRENT_DATE,
   criado_por UUID NOT NULL,
-  criado_em TIMESTAMPTZ DEFAULT now()
+  criado_em TIMESTAMPTZ DEFAULT now(),
+  -- Mesma extensão de vehicle_expenses (secção nova, 2026-09-07) + `recorrente`,
+  -- usada pelo cron mensal (FinanceRecurringCron) para gerar automaticamente
+  -- o lançamento do mês seguinte sem o utilizador ter de o repetir à mão.
+  comprovativo_url TEXT,
+  metodo_pagamento TEXT CHECK (metodo_pagamento IN ('numerario','transferencia','multibanco','cartao','cheque','outro')),
+  pago_por UUID,
+  reembolsado BOOLEAN NOT NULL DEFAULT false,
+  recorrente BOOLEAN NOT NULL DEFAULT false,
+  -- Mesma extensão de vehicle_expenses acima (dados fiscais do comprovativo).
+  fornecedor_nome TEXT,
+  fornecedor_nif TEXT,
+  valor_iva NUMERIC(10,2),
+  taxa_iva NUMERIC(4,2)
 );
 
 CREATE TABLE market_estimates (
