@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -31,6 +32,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { JwtPayload } from '../common/types/jwt-payload.interface';
 import { assertIsImageBuffer } from '../common/utils/image-signature.util';
+import { DOCUMENTO_TIPOS, DocumentoTipo } from './documento-tipo';
 
 @Controller('vehicles')
 @UseGuards(RolesGuard)
@@ -247,6 +249,46 @@ export class VehiclesController {
     @Param('photoId', ParseUUIDPipe) photoId: string,
   ) {
     return this.vehiclesService.removeGalleryPhoto(user, id, photoId);
+  }
+
+  // Documentos do veículo (secção nova, 2026-09-16) — seguro e inspeção,
+  // anexáveis no ato da compra ou depois. Distinto da galeria geral
+  // (foto_viatura) e do DUA: cada tipo é a sua própria mini-galeria (várias
+  // fotos ao longo do tempo, ex. seguros sucessivos), sem substituir a
+  // anterior automaticamente. Sem data de validade por agora (pedido
+  // explícito do utilizador — só arquivo, sem avisos de expiração).
+  @Get(':id/documents')
+  listDocuments(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {
+    return this.vehiclesService.listDocuments(user, id);
+  }
+
+  @Post(':id/documents/:tipo')
+  @Throttle({ default: { limit: 60, ttl: 3_600_000 } })
+  @UseInterceptors(FileInterceptor('foto', { storage: memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } }))
+  addDocument(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('tipo') tipo: string,
+    @UploadedFile() foto?: Express.Multer.File,
+  ) {
+    if (!DOCUMENTO_TIPOS.includes(tipo as DocumentoTipo)) {
+      throw new BadRequestException({ error: 'tipo_invalido', message: 'Tipo de documento desconhecido.' });
+    }
+    if (!foto) {
+      return { error: 'campos_em_falta', message: 'É necessário enviar uma foto.' };
+    }
+    assertIsImageBuffer(foto.buffer);
+    return this.vehiclesService.addDocument(user, id, tipo as DocumentoTipo, foto.buffer);
+  }
+
+  @Delete(':id/documents/:photoId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeDocument(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('photoId', ParseUUIDPipe) photoId: string,
+  ) {
+    return this.vehiclesService.removeDocument(user, id, photoId);
   }
 
   // "atualizar=true" ignora a cache e volta a fazer scraping às fontes —

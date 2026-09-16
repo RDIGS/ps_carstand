@@ -9,6 +9,7 @@ import { UpdateVehicleDto, CAMPOS_EDITAVEIS_POR_VENDEDOR } from './dto/update-ve
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { JwtPayload } from '../common/types/jwt-payload.interface';
+import { DOCUMENTO_TIPOS, DocumentoTipo } from './documento-tipo';
 
 const ESTADOS_VISIVEIS_VENDEDOR = ['disponivel', 'reservado', 'pendente_aprovacao'];
 
@@ -372,6 +373,38 @@ export class VehiclesService {
     const existing = await this.repo.findPhotoById(user.schemaName, vehicleId, photoId);
     if (!existing || existing.tipo !== 'foto_viatura') {
       throw new NotFoundException({ error: 'nao_encontrado', message: 'Foto não encontrada.' });
+    }
+    await this.repo.removePhoto(user.schemaName, photoId);
+  }
+
+  // Documentos do veículo (seguro/inspeção) — anexáveis no ato da compra ou
+  // depois, cada tipo é a sua própria mini-galeria (ver comentário no
+  // controller). Sem data de validade por agora, pedido explícito do
+  // utilizador.
+  async listDocuments(user: JwtPayload, vehicleId: string) {
+    await this.findOne(user, vehicleId);
+    const [seguro, inspecao] = await Promise.all([
+      this.repo.listPhotos(user.schemaName, vehicleId, 'seguro'),
+      this.repo.listPhotos(user.schemaName, vehicleId, 'inspecao'),
+    ]);
+    return { seguro, inspecao };
+  }
+
+  async addDocument(user: JwtPayload, vehicleId: string, tipo: DocumentoTipo, foto: Buffer) {
+    await this.findOne(user, vehicleId);
+    const url = await this.storage.upload(
+      `${user.schemaName}/vehicles/${vehicleId}/documents/${randomUUID()}.jpg`,
+      foto,
+      'image/jpeg',
+    );
+    return this.repo.addPhoto(user.schemaName, vehicleId, url, tipo);
+  }
+
+  async removeDocument(user: JwtPayload, vehicleId: string, photoId: string) {
+    await this.findOne(user, vehicleId);
+    const existing = await this.repo.findPhotoById(user.schemaName, vehicleId, photoId);
+    if (!existing || !DOCUMENTO_TIPOS.includes(existing.tipo as DocumentoTipo)) {
+      throw new NotFoundException({ error: 'nao_encontrado', message: 'Documento não encontrado.' });
     }
     await this.repo.removePhoto(user.schemaName, photoId);
   }

@@ -47,7 +47,7 @@ CREATE TABLE vehicle_photos (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   vehicle_id UUID REFERENCES vehicles(id) ON DELETE CASCADE,
   url TEXT NOT NULL,
-  tipo TEXT CHECK (tipo IN ('dua_frente','dua_verso','foto_viatura')),
+  tipo TEXT CHECK (tipo IN ('dua_frente','dua_verso','foto_viatura','seguro','inspecao')),
   criado_em TIMESTAMPTZ DEFAULT now()
 );
 
