@@ -159,14 +159,16 @@ export class VehiclesRepository {
       taxaIva?: number;
       pago?: boolean;
       dataVencimento?: string;
+      invoiceId?: string;
+      comprovativoUrl?: string | null;
     },
     criadoPor: string,
   ) {
     const rows = await this.tenant.query(
       schemaName,
       `INSERT INTO vehicle_expenses
-         (vehicle_id, categoria, descricao, valor, data, criado_por, metodo_pagamento, pago_por, fornecedor_nome, fornecedor_nif, valor_iva, taxa_iva, pago, data_vencimento)
-       VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, $7, $8, $9, $10, $11, $12, COALESCE($13, true), $14) RETURNING *`,
+         (vehicle_id, categoria, descricao, valor, data, criado_por, metodo_pagamento, pago_por, fornecedor_nome, fornecedor_nif, valor_iva, taxa_iva, pago, data_vencimento, comprovativo_url, invoice_id)
+       VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, $7, $8, $9, $10, $11, $12, COALESCE($13, true), $14, $15, $16) RETURNING *`,
       [
         vehicleId,
         dto.categoria,
@@ -182,9 +184,22 @@ export class VehiclesRepository {
         dto.taxaIva ?? null,
         dto.pago ?? null,
         dto.dataVencimento ?? null,
+        dto.comprovativoUrl ?? null,
+        dto.invoiceId ?? null,
       ],
     );
     return rows[0];
+  }
+
+  // Fatura partilhada (secção nova, 2026-09-17) — ver comentário em
+  // tenant-schema.sql (CREATE TABLE invoices).
+  async findInvoiceById(schemaName: string, invoiceId: string) {
+    const rows = await this.tenant.query(
+      schemaName,
+      `SELECT fornecedor_nome, fornecedor_nif, comprovativo_url FROM invoices WHERE id = $1`,
+      [invoiceId],
+    );
+    return rows[0] ?? null;
   }
 
   async findExpenseById(schemaName: string, vehicleId: string, expenseId: string) {

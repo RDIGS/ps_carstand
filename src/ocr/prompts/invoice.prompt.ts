@@ -12,8 +12,8 @@ campos do schema fornecido.
 REGRAS CRÍTICAS:
 1. Se a imagem não parecer uma fatura/recibo/talão de compra (ex.: foto de um
    carro, documento de identificação, ou imagem ilegível), define "erro":
-   "documento_nao_reconhecido" e deixa todos os outros campos a null.
-   Caso contrário, "erro" fica null.
+   "documento_nao_reconhecido", deixa todos os outros campos a null e "itens"
+   como lista vazia. Caso contrário, "erro" fica null.
 2. "valor_total" é o valor final efetivamente pago, já COM IVA incluído (não
    o subtotal antes de IVA).
 3. "valor_iva" é o valor de IVA em euros, quando o documento o discrimina
@@ -35,6 +35,15 @@ REGRAS CRÍTICAS:
    um campo com confiança razoável, usa null nesse campo e 0 na confiança
    correspondente.
 9. Não inventes valores. É preferível devolver null a adivinhar.
+10. "itens" divide a fatura em serviços/produtos distintos que ela liste como
+    linhas separadas (ex.: "Mão de obra" e "Peças", ou reparações a veículos
+    diferentes se a fatura mencionar mais que uma matrícula). Cada item tem
+    "descricao" (curta) e "valor" (só desse item, valor com IVA incluído). A
+    soma dos "valor" de "itens" deve aproximar-se de "valor_total". Se a
+    fatura só tiver um serviço/produto, ou não for possível distinguir linhas
+    com confiança, devolve um único item em "itens" que repete a "descricao"
+    e o "valor_total" completo — nunca deixes "itens" vazio quando "erro" for
+    null.
 
 USER: [imagem do documento]
 Extrai os dados desta fatura/recibo de despesa.`;

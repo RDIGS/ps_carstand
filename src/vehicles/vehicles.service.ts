@@ -244,10 +244,38 @@ export class VehiclesService {
     }
   }
 
+  // Fatura partilhada (secção nova, 2026-09-17, "fatura para várias
+  // despesas") — quando `invoiceId` vem preenchido, fornecedor/NIF/
+  // comprovativo da despesa vêm sempre da fatura (fonte única de verdade),
+  // ignorando quaisquer campos equivalentes enviados diretamente no DTO.
+  // Mesmo padrão de FinanceService.resolveFatura.
+  private async resolveFatura(
+    schemaName: string,
+    invoiceId?: string,
+  ): Promise<{ fornecedorNome: string | null; fornecedorNif: string | null; comprovativoUrl: string | null } | null> {
+    if (!invoiceId) return null;
+    const invoice = await this.repo.findInvoiceById(schemaName, invoiceId);
+    if (!invoice) {
+      throw new NotFoundException({ error: 'fatura_nao_encontrada', message: 'Fatura não encontrada.' });
+    }
+    return { fornecedorNome: invoice.fornecedor_nome, fornecedorNif: invoice.fornecedor_nif, comprovativoUrl: invoice.comprovativo_url };
+  }
+
   async addExpense(user: JwtPayload, vehicleId: string, dto: CreateExpenseDto) {
     await this.findOne(user, vehicleId);
     await this.assertPagoPorValido(user.standId, dto.pagoPor);
-    const expense = await this.repo.addExpense(user.schemaName, vehicleId, dto, user.sub);
+    const fatura = await this.resolveFatura(user.schemaName, dto.invoiceId);
+    const expense = await this.repo.addExpense(
+      user.schemaName,
+      vehicleId,
+      {
+        ...dto,
+        fornecedorNome: fatura ? fatura.fornecedorNome ?? undefined : dto.fornecedorNome,
+        fornecedorNif: fatura ? fatura.fornecedorNif ?? undefined : dto.fornecedorNif,
+        comprovativoUrl: fatura ? fatura.comprovativoUrl : undefined,
+      },
+      user.sub,
+    );
     await this.audit.log(user.schemaName, {
       entidade: 'vehicle_expense',
       entidadeId: expense.id,

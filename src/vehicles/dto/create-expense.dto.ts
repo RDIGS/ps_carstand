@@ -55,4 +55,10 @@ export class CreateExpenseDto {
   @IsOptional()
   @IsDateString()
   dataVencimento?: string;
+
+  // Fatura partilhada (secção nova, 2026-09-17, "fatura para várias
+  // despesas") — mesma regra de CreateFinanceEntryDto.invoiceId.
+  @IsOptional()
+  @IsUUID()
+  invoiceId?: string;
 }

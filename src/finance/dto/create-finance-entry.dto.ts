@@ -72,4 +72,12 @@ export class CreateFinanceEntryDto {
   @IsOptional()
   @IsDateString()
   dataVencimento?: string;
+
+  // Fatura partilhada (secção nova, 2026-09-17, "fatura para várias
+  // despesas") — quando preenchido, fornecedorNome/fornecedorNif/comprovativo
+  // desta linha vêm da fatura (ignora quaisquer valores equivalentes
+  // enviados diretamente), não são independentes.
+  @IsOptional()
+  @IsUUID()
+  invoiceId?: string;
 }

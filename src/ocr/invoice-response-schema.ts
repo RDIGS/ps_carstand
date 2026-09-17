@@ -25,6 +25,17 @@ export const INVOICE_RESPONSE_SCHEMA = {
     valor_iva: { type: 'NUMBER', nullable: true },
     taxa_iva: { type: 'NUMBER', nullable: true },
     descricao: { type: 'STRING', nullable: true },
+    itens: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          descricao: { type: 'STRING' },
+          valor: { type: 'NUMBER' },
+        },
+        required: ['descricao', 'valor'],
+      },
+    },
     confianca: {
       type: 'OBJECT',
       properties: confiancaProperties,
@@ -32,5 +43,5 @@ export const INVOICE_RESPONSE_SCHEMA = {
     },
     avisos: { type: 'ARRAY', items: { type: 'STRING' } },
   },
-  required: ['erro', 'confianca', 'avisos'],
+  required: ['erro', 'itens', 'confianca', 'avisos'],
 };

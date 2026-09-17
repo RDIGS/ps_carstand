@@ -53,6 +53,26 @@ CREATE TABLE vehicle_photos (
 
 CREATE INDEX idx_vehicle_photos_vehicle ON vehicle_photos(vehicle_id);
 
+-- Fatura/comprovativo partilhável entre várias despesas (secção nova,
+-- 2026-09-17, "fatura para várias despesas") — uma fatura de oficina pode
+-- cobrir reparações em vários veículos, ou várias categorias no mesmo
+-- veículo. `finance_entries`/`vehicle_expenses` referenciam esta tabela via
+-- `invoice_id` opcional; quando preenchido, fornecedor/NIF/comprovativo da
+-- linha vêm daqui (não são independentes). `valor_iva`/`taxa_iva` da fatura
+-- não são divididos por linha — ficam só aqui.
+CREATE TABLE invoices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  fornecedor_nome TEXT,
+  fornecedor_nif TEXT,
+  data DATE DEFAULT CURRENT_DATE,
+  valor_total NUMERIC(10,2),
+  valor_iva NUMERIC(10,2),
+  taxa_iva NUMERIC(4,2),
+  comprovativo_url TEXT,
+  criado_por UUID NOT NULL,
+  criado_em TIMESTAMPTZ DEFAULT now()
+);
+
 CREATE TABLE vehicle_expenses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   vehicle_id UUID REFERENCES vehicles(id) ON DELETE CASCADE,
@@ -87,10 +107,13 @@ CREATE TABLE vehicle_expenses (
   -- `pago = true`, senão uma despesa planeada mas não paga ainda inflacionava
   -- o cashflow do mês em que foi lançada).
   pago BOOLEAN NOT NULL DEFAULT true,
-  data_vencimento DATE
+  data_vencimento DATE,
+  -- Fatura partilhada (secção nova, 2026-09-17) — ver comentário em CREATE TABLE invoices.
+  invoice_id UUID REFERENCES invoices(id) ON DELETE SET NULL
 );
 
 CREATE INDEX idx_vehicle_expenses_vehicle ON vehicle_expenses(vehicle_id);
+CREATE INDEX idx_vehicle_expenses_invoice ON vehicle_expenses(invoice_id);
 
 CREATE TABLE sales (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -171,8 +194,12 @@ CREATE TABLE finance_entries (
   -- "vou receber X até dia Y", uma despesa pendente é "vou ter de pagar X
   -- até dia Y".
   pago BOOLEAN NOT NULL DEFAULT true,
-  data_vencimento DATE
+  data_vencimento DATE,
+  -- Fatura partilhada (secção nova, 2026-09-17) — ver comentário em CREATE TABLE invoices.
+  invoice_id UUID REFERENCES invoices(id) ON DELETE SET NULL
 );
+
+CREATE INDEX idx_finance_entries_invoice ON finance_entries(invoice_id);
 
 CREATE TABLE market_estimates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

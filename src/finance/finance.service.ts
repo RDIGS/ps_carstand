@@ -4,6 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import { StorageService } from '../storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateFinanceEntryDto } from './dto/create-finance-entry.dto';
+import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateFinanceEntryDto } from './dto/update-finance-entry.dto';
 import { FinanceSummaryQueryDto } from './dto/finance-summary-query.dto';
 import { FinanceEntriesQueryDto } from './dto/finance-entries-query.dto';
@@ -59,13 +60,34 @@ export class FinanceService {
     }
   }
 
+  // Fatura partilhada (secção nova, 2026-09-17, "fatura para várias
+  // despesas") — quando `invoiceId` vem preenchido, fornecedor/NIF/
+  // comprovativo da linha vêm sempre da fatura (fonte única de verdade),
+  // ignorando quaisquer campos equivalentes enviados diretamente no DTO.
+  private async resolveFatura(
+    schemaName: string,
+    invoiceId?: string,
+  ): Promise<{ fornecedorNome: string | null; fornecedorNif: string | null; comprovativoUrl: string | null } | null> {
+    if (!invoiceId) return null;
+    const [invoice] = await this.tenant.query(
+      schemaName,
+      `SELECT fornecedor_nome, fornecedor_nif, comprovativo_url FROM invoices WHERE id = $1`,
+      [invoiceId],
+    );
+    if (!invoice) {
+      throw new NotFoundException({ error: 'fatura_nao_encontrada', message: 'Fatura não encontrada.' });
+    }
+    return { fornecedorNome: invoice.fornecedor_nome, fornecedorNif: invoice.fornecedor_nif, comprovativoUrl: invoice.comprovativo_url };
+  }
+
   async createEntry(user: JwtPayload, dto: CreateFinanceEntryDto) {
     await this.assertPagoPorValido(user.standId, dto.pagoPor);
+    const fatura = await this.resolveFatura(user.schemaName, dto.invoiceId);
     const [entry] = await this.tenant.query(
       user.schemaName,
       `INSERT INTO finance_entries
-         (tipo, categoria, valor, descricao, data, criado_por, metodo_pagamento, pago_por, recorrente, fornecedor_nome, fornecedor_nif, valor_iva, taxa_iva, pago, data_vencimento)
-       VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, $7, $8, COALESCE($9, false), $10, $11, $12, $13, COALESCE($14, true), $15) RETURNING *`,
+         (tipo, categoria, valor, descricao, data, criado_por, metodo_pagamento, pago_por, recorrente, fornecedor_nome, fornecedor_nif, valor_iva, taxa_iva, pago, data_vencimento, comprovativo_url, invoice_id)
+       VALUES ($1, $2, $3, $4, COALESCE($5, CURRENT_DATE), $6, $7, $8, COALESCE($9, false), $10, $11, $12, $13, COALESCE($14, true), $15, $16, $17) RETURNING *`,
       [
         dto.tipo,
         dto.categoria ?? null,
@@ -76,12 +98,14 @@ export class FinanceService {
         dto.metodoPagamento ?? null,
         dto.pagoPor ?? null,
         dto.recorrente ?? null,
-        dto.fornecedorNome ?? null,
-        dto.fornecedorNif ?? null,
+        fatura ? fatura.fornecedorNome : dto.fornecedorNome ?? null,
+        fatura ? fatura.fornecedorNif : dto.fornecedorNif ?? null,
         dto.valorIva ?? null,
         dto.taxaIva ?? null,
         dto.pago ?? null,
         dto.dataVencimento ?? null,
+        fatura ? fatura.comprovativoUrl : null,
+        dto.invoiceId ?? null,
       ],
     );
     await this.audit.log(user.schemaName, {
@@ -207,6 +231,42 @@ export class FinanceService {
       user.schemaName,
       `UPDATE finance_entries SET comprovativo_url = NULL WHERE id = $1 RETURNING *`,
       [id],
+    );
+    return updated;
+  }
+
+  // Fatura partilhável entre várias despesas (secção nova, 2026-09-17) — ver
+  // comentário em tenant-schema.sql. Cria-se primeiro a fatura (sem foto,
+  // igual ao padrão create-depois-upload-foto já usado em finance_entries),
+  // depois o comprovativo é anexado à parte, e só então cada despesa é
+  // criada com `invoiceId` a apontar para aqui.
+  async createInvoice(user: JwtPayload, dto: CreateInvoiceDto) {
+    const [invoice] = await this.tenant.query(
+      user.schemaName,
+      `INSERT INTO invoices (fornecedor_nome, fornecedor_nif, data, valor_total, valor_iva, taxa_iva, criado_por)
+       VALUES ($1, $2, COALESCE($3, CURRENT_DATE), $4, $5, $6, $7) RETURNING *`,
+      [
+        dto.fornecedorNome ?? null,
+        dto.fornecedorNif ?? null,
+        dto.data ?? null,
+        dto.valorTotal,
+        dto.valorIva ?? null,
+        dto.taxaIva ?? null,
+        user.sub,
+      ],
+    );
+    return invoice;
+  }
+
+  async uploadInvoiceComprovativo(user: JwtPayload, id: string, foto: Buffer) {
+    const [existing] = await this.tenant.query(user.schemaName, `SELECT * FROM invoices WHERE id = $1`, [id]);
+    if (!existing) throw new NotFoundException({ error: 'nao_encontrado', message: 'Fatura não encontrada.' });
+
+    const url = await this.storage.upload(`${user.schemaName}/invoices/${id}/comprovativo.jpg`, foto, 'image/jpeg');
+    const [updated] = await this.tenant.query(
+      user.schemaName,
+      `UPDATE invoices SET comprovativo_url = $2 WHERE id = $1 RETURNING *`,
+      [id, url],
     );
     return updated;
   }

@@ -84,6 +84,7 @@ export class InvoiceExtractionService {
     }
 
     const extracted = parsed as unknown as InvoiceExtractedFields;
+    extracted.itens = extracted.itens ?? [];
     const confianca = (parsed.confianca as Record<string, number>) ?? {};
     const avisos = (parsed.avisos as string[]) ?? [];
 

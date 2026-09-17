@@ -21,6 +21,7 @@ import { FinanceService } from './finance.service';
 import { FinanceStatementService } from './finance-statement.service';
 import { InvoiceExtractionService } from '../ocr/invoice-extraction.service';
 import { CreateFinanceEntryDto } from './dto/create-finance-entry.dto';
+import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateFinanceEntryDto } from './dto/update-finance-entry.dto';
 import { FinanceSummaryQueryDto } from './dto/finance-summary-query.dto';
 import { FinanceEntriesQueryDto } from './dto/finance-entries-query.dto';
@@ -122,6 +123,28 @@ export class FinanceController {
   @Delete('entries/:id/comprovativo')
   removeComprovativo(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {
     return this.financeService.removeComprovativo(user, id);
+  }
+
+  // Fatura partilhável entre várias despesas — secção nova, 2026-09-17.
+  // Mesmo padrão create-depois-upload-foto de POST /finance/entries.
+  @Post('invoices')
+  createInvoice(@CurrentUser() user: JwtPayload, @Body() dto: CreateInvoiceDto) {
+    return this.financeService.createInvoice(user, dto);
+  }
+
+  @Post('invoices/:id/comprovativo')
+  @Throttle({ default: { limit: 60, ttl: 3_600_000 } })
+  @UseInterceptors(FileInterceptor('foto', { storage: memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } }))
+  uploadInvoiceComprovativo(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() foto?: Express.Multer.File,
+  ) {
+    if (!foto) {
+      return { error: 'campos_em_falta', message: 'É necessário enviar uma imagem.' };
+    }
+    assertIsImageBuffer(foto.buffer);
+    return this.financeService.uploadInvoiceComprovativo(user, id, foto.buffer);
   }
 
   // Extrato mensal (PDF + CSV) — secção nova, 2026-09-07.
