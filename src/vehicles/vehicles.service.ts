@@ -383,11 +383,13 @@ export class VehiclesService {
   // utilizador.
   async listDocuments(user: JwtPayload, vehicleId: string) {
     await this.findOne(user, vehicleId);
-    const [seguro, inspecao] = await Promise.all([
+    const [seguro, inspecao, duaFrente, duaVerso] = await Promise.all([
       this.repo.listPhotos(user.schemaName, vehicleId, 'seguro'),
       this.repo.listPhotos(user.schemaName, vehicleId, 'inspecao'),
+      this.repo.listPhotos(user.schemaName, vehicleId, 'dua_frente'),
+      this.repo.listPhotos(user.schemaName, vehicleId, 'dua_verso'),
     ]);
-    return { seguro, inspecao };
+    return { seguro, inspecao, dua_frente: duaFrente, dua_verso: duaVerso };
   }
 
   async addDocument(user: JwtPayload, vehicleId: string, tipo: DocumentoTipo, foto: Buffer) {
