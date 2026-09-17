@@ -326,20 +326,33 @@ export class SalesService {
     LEFT JOIN public.people p ON p.id = s.vendedor_id
   `;
 
+  // Só para o owner: preço de compra e lucro líquido revelam a margem do
+  // negócio, o vendedor não deve ver isto nas suas próprias vendas.
+  // Mesma fórmula já usada em finance.service.ts::summary() (margem_real).
+  private static readonly SELECT_COM_DETALHE_E_MARGEM = `
+    SELECT s.*, v.matricula, v.marca, v.modelo, p.nome AS vendedor_nome,
+           v.preco_compra,
+           (s.preco_final - v.preco_compra - COALESCE((SELECT SUM(valor) FROM vehicle_expenses e WHERE e.vehicle_id = v.id), 0)) AS margem_real
+    FROM sales s
+    JOIN vehicles v ON v.id = s.vehicle_id
+    LEFT JOIN public.people p ON p.id = s.vendedor_id
+  `;
+
   async list(user: JwtPayload, vendedorIdFilter?: string) {
     // Vendedor só vê "as minhas vendas" (V7), mesmo que tente filtrar por outro vendedor_id.
     const vendedorId = user.role === 'vendedor' ? user.sub : vendedorIdFilter;
+    const select = user.role === 'owner' ? SalesService.SELECT_COM_DETALHE_E_MARGEM : SalesService.SELECT_COM_DETALHE;
 
     if (vendedorId) {
       return this.tenant.query(
         user.schemaName,
-        `${SalesService.SELECT_COM_DETALHE} WHERE s.vendedor_id = $1 ORDER BY s.data_venda DESC`,
+        `${select} WHERE s.vendedor_id = $1 ORDER BY s.data_venda DESC`,
         [vendedorId],
       );
     }
     if (user.role !== 'owner') {
       throw new ForbiddenException({ error: 'sem_permissao', message: 'Só o owner pode ver todas as vendas.' });
     }
-    return this.tenant.query(user.schemaName, `${SalesService.SELECT_COM_DETALHE} ORDER BY s.data_venda DESC`);
+    return this.tenant.query(user.schemaName, `${select} ORDER BY s.data_venda DESC`);
   }
 }
