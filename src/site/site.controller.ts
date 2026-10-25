@@ -36,10 +36,13 @@ export class SiteController {
   // Usado pelo pedido periódico que mantém o Render e o Supabase acordados
   // (faz uma query real). `ip` é o endereço do próprio pedido tal como o
   // backend o vê — serve para confirmar a configuração de `trust proxy`.
-  @Get('health')
+  // `site/_diag` é o mesmo, mas acessível pelo domínio da app (passa pela
+  // regra de rewrite) — `_` nunca é um slug válido, por isso não colide.
+  // Só devolve dados do próprio pedido (IP e cadeia de proxies de quem chama).
+  @Get(['health', 'site/_diag'])
   async health(@Req() req: Request) {
     await this.prisma.$queryRaw`SELECT 1`;
-    return { ok: true, ip: req.ip };
+    return { ok: true, ip: req.ip, cadeia: req.headers['x-forwarded-for'] ?? null };
   }
 
   @Get('site/:slug')
