@@ -12,8 +12,10 @@ services:
     buildCommand: npm install && npm run build
     startCommand: npm run start:render
     envVars:
+      # Major só (não versão exata) para receber as correções de segurança do
+      # Node 22 automaticamente — o Node 20 deixou de as receber em 2026-04.
       - key: NODE_VERSION
-        value: 20.18.0
+        value: "22"
       - key: DATABASE_URL
         sync: false
       - key: GEMINI_API_KEY
@@ -40,6 +42,13 @@ services:
       # Backup automático da BD ao arrancar o servidor (src/backup/backup.service.ts).
       - key: SUPABASE_BACKUP_BUCKET
         value: backups
+      # Segunda cópia de cada backup num repositório GitHub privado, para não
+      # depender só da conta Supabase. Token fine-grained com Contents
+      # read/write só nesse repositório. Sem estas duas, esse destino é saltado.
+      - key: GITHUB_BACKUP_TOKEN
+        sync: false
+      - key: GITHUB_BACKUP_REPO
+        value: rdigs-2/ps_carstand_backup
       - key: CRAWLER_CACHE_TTL_HOURS
         value: "48"
       - key: GRACE_PERIOD_DAYS

@@ -10,7 +10,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.get<string>('JWT_SECRET'),
+      secretOrKey: config.getOrThrow<string>('JWT_SECRET'),
       // Reforço explícito (o `jsonwebtoken` já recusa `alg: none`/confusão
       // RS-HS por omissão com uma secret HMAC simples, mas fixar aqui não
       // deixa isso implícito/dependente da versão da biblioteca).
