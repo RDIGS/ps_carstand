@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Param, Post, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 import { Public } from '../common/decorators/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { SiteService } from './site.service';
@@ -34,15 +34,11 @@ export class SiteController {
   }
 
   // Usado pelo pedido periódico que mantém o Render e o Supabase acordados
-  // (faz uma query real). `ip` é o endereço do próprio pedido tal como o
-  // backend o vê — serve para confirmar a configuração de `trust proxy`.
-  // `site/_diag` é o mesmo, mas acessível pelo domínio da app (passa pela
-  // regra de rewrite) — `_` nunca é um slug válido, por isso não colide.
-  // Só devolve dados do próprio pedido (IP e cadeia de proxies de quem chama).
-  @Get(['health', 'site/_diag'])
-  async health(@Req() req: Request) {
+  // (faz uma query real).
+  @Get('health')
+  async health() {
     await this.prisma.$queryRaw`SELECT 1`;
-    return { ok: true, ip: req.ip };
+    return { ok: true };
   }
 
   @Get('site/:slug')
