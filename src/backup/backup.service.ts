@@ -35,6 +35,15 @@ const NUM_BACKUPS_A_MANTER = 30;
  * credenciais do Supabase não estiverem configuradas (mesmo padrão do
  * StorageService). Corre em background: nunca deve atrasar o arranque do
  * servidor nem o primeiro health check do Render.
+ *
+ * Segundo destino independente (secção nova, 2026-10-25, incidente do
+ * projeto Supabase ter ficado inacessível ~1 mês sem ninguém conseguir lá
+ * entrar): enviar também para um repositório GitHub privado, via
+ * `GITHUB_BACKUP_TOKEN`/`GITHUB_BACKUP_REPO`. O objetivo é explícito —
+ * nunca depender de um único sítio (e de uma única conta) para os backups,
+ * que é exatamente o que aconteceu com o Supabase sozinho. Best-effort e
+ * independente do destino principal: uma falha aqui nunca impede o backup
+ * da correr/ser considerado feito, só fica registada em log.
  */
 @Injectable()
 export class BackupService implements OnApplicationBootstrap, OnApplicationShutdown {
@@ -69,6 +78,16 @@ export class BackupService implements OnApplicationBootstrap, OnApplicationShutd
 
     await this.guardar(nomeFicheiro, conteudo);
     await this.aplicarRetencao();
+
+    try {
+      await this.guardarGitHub(nomeFicheiro, conteudo);
+      await this.aplicarRetencaoGitHub();
+    } catch (err) {
+      // Nunca falha o backup todo por causa do 2º destino — o principal
+      // (Supabase/disco, acima) já está garantido nesta altura.
+      this.logger.warn(`Backup para o GitHub falhou: ${err instanceof Error ? err.message : err}`);
+    }
+
     this.logger.log(`Backup concluído: ${nomeFicheiro} (${(conteudo.length / 1024).toFixed(0)} KB)`);
   }
 
@@ -151,6 +170,89 @@ export class BackupService implements OnApplicationBootstrap, OnApplicationShutd
     if (!res.ok && res.status !== 400 && res.status !== 409) {
       throw new Error(`Falha ao garantir bucket de backups: ${res.status} — ${await res.text()}`);
     }
+  }
+
+  // Repositório GitHub privado dedicado a backups (secção nova, 2026-10-25)
+  // — segundo destino independente da Supabase. `GITHUB_BACKUP_REPO` no
+  // formato "dono/repo" (ex. "RDIGS/ps-carstand-backups"). Sem as duas vars
+  // configuradas, este destino fica simplesmente desligado (não é
+  // obrigatório, ao contrário do Supabase/disco local que é sempre o
+  // destino principal).
+  private githubConfig(): { token: string; repo: string } | null {
+    const token = this.config.get<string>('GITHUB_BACKUP_TOKEN');
+    const repo = this.config.get<string>('GITHUB_BACKUP_REPO');
+    if (!token || !repo) return null;
+    return { token, repo };
+  }
+
+  private async guardarGitHub(nome: string, conteudo: Buffer): Promise<void> {
+    const github = this.githubConfig();
+    if (!github) {
+      this.logger.debug('GITHUB_BACKUP_TOKEN/GITHUB_BACKUP_REPO não configurados — a saltar backup para o GitHub.');
+      return;
+    }
+
+    // Ficheiro novo sempre (nome tem timestamp, nunca colide) — a Contents
+    // API só pede `sha` para ATUALIZAR um ficheiro existente, não para criar.
+    const res = await fetch(`https://api.github.com/repos/${github.repo}/contents/backups/${nome}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${github.token}`,
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: `Backup automático ${nome}`,
+        content: conteudo.toString('base64'),
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(`Falha ao enviar backup para o GitHub: ${res.status} — ${await res.text()}`);
+    }
+  }
+
+  private async listBackupsGitHub(): Promise<{ nome: string; sha: string }[]> {
+    const github = this.githubConfig();
+    if (!github) return [];
+
+    const res = await fetch(`https://api.github.com/repos/${github.repo}/contents/backups`, {
+      headers: { Authorization: `Bearer ${github.token}`, Accept: 'application/vnd.github+json' },
+    });
+    if (res.status === 404) return []; // pasta "backups/" ainda não existe (1ª corrida).
+    if (!res.ok) {
+      this.logger.warn(`Falha ao listar backups no GitHub: ${res.status}`);
+      return [];
+    }
+    const entries = (await res.json()) as { name: string; sha: string }[];
+    return entries
+      .filter((e) => e.name.startsWith('backup-'))
+      .map((e) => ({ nome: e.name, sha: e.sha }))
+      .sort((a, b) => this.timestampDoNome(a.nome) - this.timestampDoNome(b.nome));
+  }
+
+  private async aplicarRetencaoGitHub(): Promise<void> {
+    const github = this.githubConfig();
+    if (!github) return;
+
+    const backups = await this.listBackupsGitHub();
+    if (backups.length <= NUM_BACKUPS_A_MANTER) return;
+    const aApagar = backups.slice(0, backups.length - NUM_BACKUPS_A_MANTER);
+
+    for (const { nome, sha } of aApagar) {
+      const res = await fetch(`https://api.github.com/repos/${github.repo}/contents/backups/${nome}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${github.token}`,
+          Accept: 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: `Remover backup antigo ${nome}`, sha }),
+      });
+      if (!res.ok) {
+        this.logger.warn(`Falha ao apagar backup antigo do GitHub (${nome}): ${res.status}`);
+      }
+    }
+    this.logger.log(`Retenção (GitHub) aplicada: ${aApagar.length} backup(s) antigo(s) removido(s).`);
   }
 
   private async listBackups(): Promise<{ nome: string; criadoEm: number }[]> {
