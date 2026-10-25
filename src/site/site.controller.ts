@@ -42,7 +42,7 @@ export class SiteController {
   @Get(['health', 'site/_diag'])
   async health(@Req() req: Request) {
     await this.prisma.$queryRaw`SELECT 1`;
-    return { ok: true, ip: req.ip, cadeia: req.headers['x-forwarded-for'] ?? null };
+    return { ok: true, ip: req.ip };
   }
 
   @Get('site/:slug')
