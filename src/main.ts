@@ -9,6 +9,11 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.enableCors();
+  // O site público (/site/*) tem limites por visitante: sem isto o backend
+  // veria sempre o IP do proxy do Render e todos os visitantes partilhariam o
+  // mesmo limite. Número de proxies confiáveis à frente (Cloudflare + Render),
+  // configurável porque depende do caminho; ver GET /health (campo ip).
+  app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 2));
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new ApiExceptionFilter());
 

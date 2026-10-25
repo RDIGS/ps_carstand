@@ -5,6 +5,7 @@ export const LEAD_ORIGENS = [
   'standvirtual',
   'olx',
   'custojusto',
+  'site',
   'outro',
 ] as const;
 

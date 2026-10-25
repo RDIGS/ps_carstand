@@ -108,6 +108,14 @@ model Stand {
   // (secção calendário, 2026-09-08) — gerado sob pedido (nunca partilhado
   // por omissão), nunca reaproveitar o `token` de acesso do stand para isto.
   calendarFeedToken           String?     @unique @map("calendar_feed_token")
+  // Site público do stand (secção nova, 2026-10-25): servido pelo backend em
+  // /site/:slug e mostrado em ps-carstand-app.onrender.com/:slug por uma
+  // regra de rewrite do Static Site no Render. Só fica online com siteAtivo.
+  slug                        String?     @unique
+  siteAtivo                   Boolean     @default(false) @map("site_ativo")
+  // Por omissão só o owner aprova pedidos de visita vindos do site; o owner
+  // pode alargar aos colaboradores nas definições do stand.
+  vendedorPodeAprovarVisitas  Boolean     @default(false) @map("vendedor_pode_aprovar_visitas")
 
   members     StandMember[]
   suggestions Suggestion[]

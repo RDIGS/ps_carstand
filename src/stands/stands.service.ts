@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantService } from '../tenant/tenant.service';
@@ -6,10 +7,23 @@ import { StorageService } from '../storage/storage.service';
 import { CreateStandDto } from './dto/create-stand.dto';
 import { UpdateStandDto } from './dto/update-stand.dto';
 import { UpdateStandTokenDto } from './dto/update-stand-token.dto';
-import { UpdateStandProfileDto } from './dto/update-stand-profile.dto';
+import { SLUGS_RESERVADOS, UpdateStandProfileDto } from './dto/update-stand-profile.dto';
 import { RegisterStandPaymentDto } from './dto/register-stand-payment.dto';
 import { generateStandToken } from './stand-token.util';
 import { hashPassword } from '../common/utils/password.util';
+
+// Campos do perfil que o próprio stand vê/edita (GET/PATCH /stands/me).
+const PERFIL_SELECT = {
+  id: true,
+  nome: true,
+  contacto: true,
+  redesSociais: true,
+  logoUrl: true,
+  morada: true,
+  slug: true,
+  siteAtivo: true,
+  vendedorPodeAprovarVisitas: true,
+} as const;
 
 @Injectable()
 export class StandsService {
@@ -60,19 +74,33 @@ export class StandsService {
   getProfile(standId: string) {
     return this.prisma.stand.findUniqueOrThrow({
       where: { id: standId },
-      select: { id: true, nome: true, contacto: true, redesSociais: true, logoUrl: true },
+      select: PERFIL_SELECT,
     });
   }
 
-  updateProfile(standId: string, dto: UpdateStandProfileDto) {
-    return this.prisma.stand.update({
-      where: { id: standId },
-      data: {
-        contacto: dto.contacto,
-        redesSociais: dto.redesSociais,
-      },
-      select: { id: true, nome: true, contacto: true, redesSociais: true, logoUrl: true },
-    });
+  async updateProfile(standId: string, dto: UpdateStandProfileDto) {
+    if (dto.slug && SLUGS_RESERVADOS.includes(dto.slug)) {
+      throw new BadRequestException({ error: 'slug_reservado', message: 'Esse endereço está reservado. Escolhe outro.' });
+    }
+    try {
+      return await this.prisma.stand.update({
+        where: { id: standId },
+        data: {
+          contacto: dto.contacto,
+          redesSociais: dto.redesSociais,
+          morada: dto.morada,
+          slug: dto.slug,
+          siteAtivo: dto.siteAtivo,
+          vendedorPodeAprovarVisitas: dto.vendedorPodeAprovarVisitas,
+        },
+        select: PERFIL_SELECT,
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException({ error: 'slug_em_uso', message: 'Esse endereço já está a ser usado por outro stand.' });
+      }
+      throw err;
+    }
   }
 
   // Logótipo do stand para o gerador de banner de venda (secção nova, pedido
@@ -85,7 +113,7 @@ export class StandsService {
     return this.prisma.stand.update({
       where: { id: standId },
       data: { logoUrl: url },
-      select: { id: true, nome: true, contacto: true, redesSociais: true, logoUrl: true },
+      select: PERFIL_SELECT,
     });
   }
 
@@ -93,7 +121,7 @@ export class StandsService {
     return this.prisma.stand.update({
       where: { id: standId },
       data: { logoUrl: null },
-      select: { id: true, nome: true, contacto: true, redesSociais: true, logoUrl: true },
+      select: PERFIL_SELECT,
     });
   }
 

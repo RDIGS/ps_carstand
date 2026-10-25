@@ -268,7 +268,8 @@ CREATE TABLE leads (
   nome TEXT NOT NULL,
   telefone TEXT,
   email TEXT,
-  origem TEXT CHECK (origem IN ('telefone','whatsapp','presencial','standvirtual','olx','custojusto','outro')),
+  -- 'site' (2026-10-25): leads criadas ao aprovar um pedido de visita do site público.
+  origem TEXT CHECK (origem IN ('telefone','whatsapp','presencial','standvirtual','olx','custojusto','site','outro')),
   estado TEXT DEFAULT 'novo' CHECK (estado IN ('novo','contactado','agendado','convertido','perdido')),
   notas TEXT,
   vendedor_id UUID,
@@ -326,3 +327,29 @@ CREATE TABLE calendar_event_participants (
 
 CREATE INDEX idx_calendar_participants_event ON calendar_event_participants(event_id);
 CREATE INDEX idx_calendar_participants_person ON calendar_event_participants(person_id);
+
+-- Pedidos de visita feitos por visitantes no site público do stand (secção
+-- nova, 2026-10-25). Ficam 'pendente' até o owner (ou um colaborador, se o
+-- owner ativou essa opção) aprovar ou rejeitar na app. Aprovar cria a lead e
+-- o evento no calendário, cujos ids ficam aqui para rastreio. O stand
+-- contacta o visitante por telefone/WhatsApp — não há envio de email.
+-- `consentimento_em` regista quando o visitante aceitou o tratamento dos
+-- dados (RGPD) — o formulário não deixa enviar sem isso.
+CREATE TABLE visit_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  vehicle_id UUID REFERENCES vehicles(id) ON DELETE SET NULL,
+  nome TEXT NOT NULL,
+  telefone TEXT,
+  email TEXT,
+  data_hora TIMESTAMPTZ NOT NULL,
+  mensagem TEXT,
+  estado TEXT NOT NULL DEFAULT 'pendente' CHECK (estado IN ('pendente','aprovado','rejeitado')),
+  respondido_por UUID,
+  respondido_em TIMESTAMPTZ,
+  calendar_event_id UUID REFERENCES calendar_events(id) ON DELETE SET NULL,
+  lead_id UUID REFERENCES leads(id) ON DELETE SET NULL,
+  consentimento_em TIMESTAMPTZ NOT NULL,
+  criado_em TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_visit_requests_estado ON visit_requests(estado);
