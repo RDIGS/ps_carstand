@@ -1,0 +1,27 @@
+# Mantém o backend (Render, plano free) e a base de dados (Supabase, plano
+# free) acordados. Sem pedidos, o Render adormece ao fim de ~15 min (o
+# primeiro visitante do site esperava ~40 s) e a Supabase pausa o projeto ao
+# fim de ~7 dias — foi isso que deixou a produção em baixo em out/2026.
+# /health faz uma query real à BD, por isso acorda os dois.
+#
+# De 5 em 5 min (e não 10) porque o GitHub atrasa por vezes as tarefas
+# agendadas. Repositório público = minutos de Actions ilimitados.
+# Nota: o GitHub desliga tarefas agendadas em repos públicos sem atividade
+# (commits) há 60 dias — se o projeto parar tanto tempo, reativar no
+# separador Actions.
+name: Manter acordado
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Pedir /health ao backend
+        run: |
+          curl --fail --silent --show-error --retry 3 --retry-delay 20 --max-time 90 \
+            https://ps-carstand-backend.onrender.com/health
