@@ -5,7 +5,9 @@
 # /health faz uma query real à BD, por isso acorda os dois.
 #
 # De 5 em 5 min (e não 10) porque o GitHub atrasa por vezes as tarefas
-# agendadas. Repositório público = minutos de Actions ilimitados.
+# agendadas; em minutos "tortos" (3, 8, 13...) porque nos minutos certos
+# o GitHub está sobrecarregado e salta execuções. Repositório público =
+# minutos de Actions ilimitados.
 # Nota: o GitHub desliga tarefas agendadas em repos públicos sem atividade
 # (commits) há 60 dias — se o projeto parar tanto tempo, reativar no
 # separador Actions.
@@ -13,7 +15,7 @@ name: Manter acordado
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '3-59/5 * * * *'
   workflow_dispatch:
 
 jobs:
