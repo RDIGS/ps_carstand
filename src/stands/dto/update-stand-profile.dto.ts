@@ -24,6 +24,22 @@ export class UpdateStandProfileDto {
   @MaxLength(200)
   morada?: string;
 
+  // NIF da empresa — aparece nas declarações do veículo.
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @Matches(/^\d{9}$/, { message: 'O NIF tem de ter 9 dígitos.' })
+  nif?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  denominacaoSocial?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  localidade?: string | null;
+
   // `null` = remover o endereço (e o site deixa de estar acessível).
   @IsOptional()
   @ValidateIf((_, v) => v !== null)

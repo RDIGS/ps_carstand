@@ -176,39 +176,36 @@ export class SalesService {
     // genérico como se nada tivesse acontecido: o carro já mudou de estado.
     // Em vez disso devolve-se sucesso com doc_registo_compra_url = null; o
     // erro fica só nos logs para investigação, nunca ao utilizador.
+    // Desde 2026-10-26 o documento é a "Declaração de Compra e Venda" (stand
+    // vendedor, modelo fornecido pelo utilizador) — a coluna mantém o nome
+    // antigo para não mexer em dados nem na app.
     let docUrl: string | null = null;
     try {
-      docUrl = await this.documents.generateRegistoCompra(user.schemaName, sale.id, {
-        stand: { nome: stand.nome, nif: stand.nif, morada: stand.morada, contacto: stand.contacto },
-        vehicle: {
-          matricula: vehicle.matricula,
-          marca: vehicle.marca,
-          modelo: vehicle.modelo,
-          versao: vehicle.versao,
-          chassis: vehicle.chassis,
-          categoria: vehicle.categoria,
-        },
-        sale: {
-          compradorNome: dto.compradorNome,
-          compradorNif: dto.compradorNif,
-          compradorMorada: dto.compradorMorada,
-          compradorCp: dto.compradorCp,
-          compradorTelefone: dto.compradorTelefone,
-          compradorIdentificacaoTipo: dto.compradorIdentificacaoTipo,
-          compradorIdentificacaoNumero: dto.compradorIdentificacaoNumero,
-          precoFinal: dto.precoFinal,
-          dataVenda: new Date(sale.data_venda).toLocaleDateString('pt-PT'),
-        },
+      const moradaComprador = [dto.compradorMorada, [dto.compradorCp, dto.compradorLocalidade].filter(Boolean).join(' ')]
+        .filter(Boolean)
+        .join(', ');
+      docUrl = await this.documents.gerarDeclaracao(user.schemaName, vehicle.id, {
+        tipo: 'venda',
+        stand,
+        veiculo: vehicle,
+        pessoa: { nome: dto.compradorNome, nif: dto.compradorNif, morada: moradaComprador || null },
+        preco: dto.precoFinal,
       });
       await this.tenant.query(user.schemaName, `UPDATE sales SET doc_registo_compra_url = $2 WHERE id = $1`, [
         sale.id,
         docUrl,
       ]);
+      await this.tenant.query(
+        user.schemaName,
+        `INSERT INTO documentos_gerados (vehicle_id, sale_id, tipo, url, cliente_nome, criado_por)
+         VALUES ($1, $2, 'venda', $3, $4, $5)`,
+        [vehicle.id, sale.id, docUrl, dto.compradorNome, user.sub],
+      );
     } catch (err) {
-      this.logger.error(`Falha ao gerar o Registo de Compra da venda ${sale.id}`, err instanceof Error ? err.stack : err);
+      this.logger.error(`Falha ao gerar a declaração de venda da venda ${sale.id}`, err instanceof Error ? err.stack : err);
     }
 
-    // Mesmo padrão "best-effort" do Registo de Compra acima — a venda já
+    // Mesmo padrão "best-effort" da declaração de venda acima — a venda já
     // está confirmada, uma falha aqui (ex.: template ilegível, campo
     // inesperado) nunca pode reverter nem bloquear a resposta.
     let duaFinalUrl: string | null = null;
@@ -227,7 +224,7 @@ export class SalesService {
         },
         transmitente:
           dto.transmitenteEStand ?? true
-            ? { nome: stand.nome, nif: stand.nif, morada: stand.morada }
+            ? { nome: stand.denominacaoSocial?.trim() || stand.nome, nif: stand.nif, morada: stand.morada }
             : {
                 nome: dto.transmitenteNome ?? '',
                 nif: dto.transmitenteNif,
@@ -296,6 +293,9 @@ export class SalesService {
         `UPDATE vehicles SET estado = 'disponivel', preco_venda_final = NULL, atualizado_em = now() WHERE id = $1`,
         [sale.vehicle_id],
       );
+      // A declaração de venda deixa de valer com a venda revertida — sai do
+      // histórico do veículo, tal como o link acima.
+      await client.query(`DELETE FROM documentos_gerados WHERE sale_id = $1`, [saleId]);
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK');

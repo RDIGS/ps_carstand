@@ -1,16 +1,25 @@
 import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { StorageService } from '../storage/storage.service';
-import { generateRegistoCompraPdf, RegistoCompraData } from './registo-compra.template';
 import { generateDuaFinalPdf, DuaFinalData } from './templates/dua-final.template';
 import { generateIdentityDocumentPdf, IdentityDocumentData } from './identity-document.template';
+import { DadosDeclaracao, gerarDeclaracaoPdf } from './declaracoes';
 
 @Injectable()
 export class DocumentsService {
   constructor(private readonly storage: StorageService) {}
 
-  async generateRegistoCompra(schemaName: string, saleId: string, data: RegistoCompraData): Promise<string> {
-    const pdfBuffer = await generateRegistoCompraPdf(data);
-    return this.storage.upload(`${schemaName}/sales/${saleId}/registo-compra.pdf`, pdfBuffer, 'application/pdf');
+  /**
+   * Declarações do veículo (compra, venda, circulação, características) —
+   * cada emissão tem o seu ficheiro (nunca substitui uma anterior).
+   */
+  async gerarDeclaracao(schemaName: string, vehicleId: string, dados: DadosDeclaracao): Promise<string> {
+    const pdfBuffer = await gerarDeclaracaoPdf(dados);
+    return this.storage.upload(
+      `${schemaName}/vehicles/${vehicleId}/declaracoes/${dados.tipo}-${randomUUID()}.pdf`,
+      pdfBuffer,
+      'application/pdf',
+    );
   }
 
   async generateDuaFinal(schemaName: string, saleId: string, data: DuaFinalData): Promise<string> {

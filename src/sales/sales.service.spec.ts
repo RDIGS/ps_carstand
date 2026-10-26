@@ -57,7 +57,7 @@ describe('SalesService', () => {
       query: jest.fn().mockResolvedValue([]),
     };
     vehiclesRepo = { findById: jest.fn().mockResolvedValue(VEHICLE_DISPONIVEL) };
-    documents = { generateRegistoCompra: jest.fn().mockResolvedValue('https://storage/registo.pdf') };
+    documents = { gerarDeclaracao: jest.fn().mockResolvedValue('https://storage/registo.pdf') };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     const storage = { upload: jest.fn() };
     const identityExtraction = { extract: jest.fn() };
@@ -84,7 +84,7 @@ describe('SalesService', () => {
     it('cria a venda, marca o veículo vendido e devolve o URL do PDF', async () => {
       const resultado = await service.create(USER, criarDto());
 
-      expect(resultado).toEqual({ id: 'sale-1', doc_registo_compra_url: 'https://storage/registo.pdf', vehicle_estado: 'vendido' });
+      expect(resultado).toEqual({ id: 'sale-1', doc_registo_compra_url: 'https://storage/registo.pdf', doc_dua_final_url: null, vehicle_estado: 'vendido' });
       expect(dbClient.query).toHaveBeenCalledWith('BEGIN');
       expect(dbClient.query).toHaveBeenCalledWith('COMMIT');
       expect(dbClient.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO sales'), expect.any(Array));
@@ -104,11 +104,11 @@ describe('SalesService', () => {
     // cliente com a venda já feita "às escuras" (veículo marcado vendido sem
     // o utilizador saber se a venda tinha sido registada).
     it('não falha a venda se a geração do PDF rebentar — devolve doc_registo_compra_url null', async () => {
-      documents.generateRegistoCompra.mockRejectedValueOnce(new Error('WinAnsi cannot encode'));
+      documents.gerarDeclaracao.mockRejectedValueOnce(new Error('WinAnsi cannot encode'));
 
       const resultado = await service.create(USER, criarDto());
 
-      expect(resultado).toEqual({ id: 'sale-1', doc_registo_compra_url: null, vehicle_estado: 'vendido' });
+      expect(resultado).toEqual({ id: 'sale-1', doc_registo_compra_url: null, doc_dua_final_url: null, vehicle_estado: 'vendido' });
       expect(dbClient.query).toHaveBeenCalledWith('COMMIT');
       expect(audit.log).toHaveBeenCalledWith(
         USER.schemaName,

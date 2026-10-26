@@ -88,6 +88,11 @@ model Stand {
   nome                        String
   nif                         String?
   morada                      String?
+  // Nome legal (ex. "Carstech – Fasquia Improvável, Lda") e localidade, usados
+  // nas declarações do veículo (secção nova, 2026-10-26). Sem denominação,
+  // as declarações usam o `nome`.
+  denominacaoSocial           String?     @map("denominacao_social")
+  localidade                  String?
   contacto                    String?
   redesSociais                String?     @map("redes_sociais")
   logoUrl                     String?     @map("logo_url")

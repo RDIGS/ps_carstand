@@ -353,3 +353,20 @@ CREATE TABLE visit_requests (
 );
 
 CREATE INDEX idx_visit_requests_estado ON visit_requests(estado);
+
+-- Declarações do veículo emitidas (secção nova, 2026-10-26): compra (stand
+-- compra ao cliente, ao inserir o veículo), venda (fluxo de venda, substitui o
+-- antigo "Registo de Compra"), circulação e características (a pedido). Fica o
+-- histórico para a ficha do veículo poder reabrir qualquer uma.
+CREATE TABLE documentos_gerados (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  vehicle_id UUID REFERENCES vehicles(id) ON DELETE CASCADE,
+  sale_id UUID REFERENCES sales(id) ON DELETE SET NULL,
+  tipo TEXT NOT NULL CHECK (tipo IN ('compra','venda','circulacao','caracteristicas')),
+  url TEXT NOT NULL,
+  cliente_nome TEXT,
+  criado_por UUID NOT NULL,
+  criado_em TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_documentos_gerados_vehicle ON documentos_gerados(vehicle_id);

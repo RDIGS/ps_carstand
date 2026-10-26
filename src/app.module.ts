@@ -27,6 +27,7 @@ import { LeadsModule } from './leads/leads.module';
 import { CalendarModule } from './calendar/calendar.module';
 import { SiteModule } from './site/site.module';
 import { VisitsModule } from './visits/visits.module';
+import { DeclaracoesModule } from './declaracoes/declaracoes.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { StandThrottlerGuard } from './common/guards/stand-throttler.guard';
@@ -61,6 +62,7 @@ import { StandThrottlerGuard } from './common/guards/stand-throttler.guard';
     CalendarModule,
     SiteModule,
     VisitsModule,
+    DeclaracoesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
