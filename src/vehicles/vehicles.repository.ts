@@ -20,7 +20,8 @@ export class VehiclesRepository {
               (SELECT url FROM vehicle_photos p WHERE p.vehicle_id = v.id AND p.tipo = 'foto_viatura' ORDER BY p.criado_em ASC LIMIT 1) AS foto_capa,
               COALESCE((COALESCE(s.data_venda, CURRENT_DATE) - v.data_entrada_stock), 0)::int AS dias_em_stock,
               (SELECT COUNT(*) FROM vehicle_checklist_items c WHERE c.vehicle_id = v.id)::int AS checklist_total,
-              (SELECT COUNT(*) FROM vehicle_checklist_items c WHERE c.vehicle_id = v.id AND c.concluido)::int AS checklist_concluidos
+              (SELECT COUNT(*) FROM vehicle_checklist_items c WHERE c.vehicle_id = v.id AND c.concluido)::int AS checklist_concluidos,
+              COALESCE((SELECT SUM(valor) FROM vehicle_expenses e WHERE e.vehicle_id = v.id), 0) AS despesas_total
        FROM vehicles v
        LEFT JOIN sales s ON s.vehicle_id = v.id AND s.estado = 'concluida'
        WHERE v.estado = ANY($1)
@@ -36,6 +37,15 @@ export class VehiclesRepository {
     );
 
     return { rows, totalItems: Number(count) };
+  }
+
+  async despesasTotal(schemaName: string, vehicleId: string): Promise<string> {
+    const [{ total }] = await this.tenant.query<{ total: string }>(
+      schemaName,
+      `SELECT COALESCE(SUM(valor), 0)::text AS total FROM vehicle_expenses WHERE vehicle_id = $1`,
+      [vehicleId],
+    );
+    return total;
   }
 
   async countStockParado(schemaName: string, diasLimite: number) {

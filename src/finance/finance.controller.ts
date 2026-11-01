@@ -52,6 +52,11 @@ export class FinanceController {
     return this.financeService.evolution(user, meses ? Number(meses) : undefined);
   }
 
+  @Get('painel')
+  painel(@CurrentUser() user: JwtPayload) {
+    return this.financeService.painel(user);
+  }
+
   @Get('stock-potencial')
   stockPotencial(@CurrentUser() user: JwtPayload) {
     return this.financeService.stockPotencial(user);

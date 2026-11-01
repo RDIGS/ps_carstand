@@ -37,7 +37,7 @@ export class VehiclesService {
 
     const { rows, totalItems } = await this.repo.findMany(user.schemaName, { estados, page, limit });
     return {
-      data: rows,
+      data: rows.map((r: Record<string, unknown>) => this.paraResposta(user, r)),
       page,
       total_pages: Math.max(1, Math.ceil(totalItems / limit)),
       total_items: totalItems,
@@ -47,6 +47,31 @@ export class VehiclesService {
   async getStockAlerts(user: JwtPayload) {
     const veiculosParados = await this.repo.countStockParado(user.schemaName, DIAS_STOCK_PARADO);
     return { veiculos_parados: veiculosParados, limite_dias: DIAS_STOCK_PARADO };
+  }
+
+  // Preço de compra, despesas e margem são informação só de owner (mesma
+  // regra de GET :id/expenses e do Financeiro) — para vendedores nem saem do
+  // servidor, não basta a app escondê-los. Margem prevista = preço pedido −
+  // compra − despesas; sem preço pedido ou de compra fica null.
+  paraResposta(user: JwtPayload, row: Record<string, unknown>) {
+    const { despesas_total, ...resto } = row;
+    if (user.role !== 'owner') {
+      delete resto.preco_compra;
+      return resto;
+    }
+    const despesas = Number(despesas_total ?? 0);
+    const pedido = row.preco_venda_recomendado;
+    const compra = row.preco_compra;
+    const margem = pedido != null && compra != null ? Number(pedido) - Number(compra) - despesas : null;
+    return { ...resto, despesas_total: despesas, margem_prevista: margem };
+  }
+
+  // GET /vehicles/:id — findOne() continua a ser o usado internamente.
+  async detalhe(user: JwtPayload, id: string) {
+    const vehicle = await this.findOne(user, id);
+    if (user.role !== 'owner') return this.paraResposta(user, vehicle);
+    const despesas = await this.repo.despesasTotal(user.schemaName, id);
+    return this.paraResposta(user, { ...vehicle, despesas_total: despesas });
   }
 
   async findOne(user: JwtPayload, id: string) {
@@ -114,7 +139,7 @@ export class VehiclesService {
         });
       }
       // Vendedor só pode alterar os campos explicitamente permitidos (secção 4).
-      const camposDto: Record<string, unknown> = { kms: dto.kms, precoCompra: dto.precoCompra, precoVendaRecomendado: dto.precoVendaRecomendado };
+      const camposDto: Record<string, unknown> = { kms: dto.kms, precoVendaRecomendado: dto.precoVendaRecomendado };
       fields = {};
       for (const campo of CAMPOS_EDITAVEIS_POR_VENDEDOR) {
         if (camposDto[campo] !== undefined) {

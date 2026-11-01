@@ -43,6 +43,13 @@ export class VehiclesController {
     private readonly crawlerService: CrawlerService,
   ) {}
 
+  // Respostas com o veículo passam sempre pelo mesmo filtro por papel
+  // (preço de compra/despesas/margem só para owner).
+  private async resposta(user: JwtPayload, pendente: Promise<Record<string, unknown> | null | undefined>) {
+    const v = await pendente;
+    return v ? this.vehiclesService.paraResposta(user, v) : v;
+  }
+
   @Get()
   list(
     @CurrentUser() user: JwtPayload,
@@ -62,12 +69,12 @@ export class VehiclesController {
 
   @Get(':id')
   findOne(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {
-    return this.vehiclesService.findOne(user, id);
+    return this.vehiclesService.detalhe(user, id);
   }
 
   @Post()
   create(@CurrentUser() user: JwtPayload, @Body() dto: CreateVehicleDto) {
-    return this.vehiclesService.create(user, dto);
+    return this.resposta(user, this.vehiclesService.create(user, dto));
   }
 
   @Post('from-dua')
@@ -100,12 +107,12 @@ export class VehiclesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateVehicleDto,
   ) {
-    return this.vehiclesService.create(user, dto, id);
+    return this.resposta(user, this.vehiclesService.create(user, dto, id));
   }
 
   @Patch(':id')
   update(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateVehicleDto) {
-    return this.vehiclesService.update(user, id, dto);
+    return this.resposta(user, this.vehiclesService.update(user, id, dto));
   }
 
   @Delete(':id')
@@ -129,7 +136,7 @@ export class VehiclesController {
 
   @Patch(':id/reserve')
   reserve(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReserveVehicleDto) {
-    return this.vehiclesService.setReservado(user, id, dto.reservado);
+    return this.resposta(user, this.vehiclesService.setReservado(user, id, dto.reservado));
   }
 
   @Post(':id/expenses')

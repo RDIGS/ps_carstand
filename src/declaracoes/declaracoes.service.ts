@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantService } from '../tenant/tenant.service';
 import { AuditService } from '../audit/audit.service';
@@ -30,6 +30,10 @@ export class DeclaracoesService {
   async emitir(user: JwtPayload, vehicleId: string, tipo: string, dto: EmitirDeclaracaoDto) {
     if (!(TIPOS_A_PEDIDO as readonly string[]).includes(tipo)) {
       throw new BadRequestException({ error: 'pedido_invalido', message: 'Tipo de declaração desconhecido.' });
+    }
+    // A de compra leva o preço de compra, que é só para owners.
+    if (tipo === 'compra' && user.role !== 'owner') {
+      throw new ForbiddenException({ error: 'sem_permissao', message: 'Só o owner pode emitir a declaração de compra.' });
     }
     // Mesma verificação de acesso da ficha do veículo (vendedor não vê vendidos).
     const veiculo = await this.vehicles.findOne(user, vehicleId);
@@ -67,8 +71,8 @@ export class DeclaracoesService {
     return this.tenant.query(
       user.schemaName,
       `SELECT id, tipo, url, cliente_nome, sale_id, criado_em FROM documentos_gerados
-       WHERE vehicle_id = $1 ORDER BY criado_em DESC`,
-      [vehicleId],
+       WHERE vehicle_id = $1 AND ($2 OR tipo <> 'compra') ORDER BY criado_em DESC`,
+      [vehicleId, user.role === 'owner'],
     );
   }
 }

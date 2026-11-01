@@ -557,6 +557,49 @@ export class FinanceService {
     });
   }
 
+  // Painel do topo da lista de veículos (owner): o essencial do negócio num
+  // relance. Stock = disponível + reservado. A margem prevista só soma carros
+  // com preço pedido e de compra (os restantes contam em `sem_preco`). O mês
+  // é o mês corrente em Lisboa.
+  async painel(user: JwtPayload) {
+    const [r] = await this.tenant.query<{
+      em_stock: number;
+      investido: string;
+      margem_prevista: string;
+      sem_preco: number;
+      vendas_mes: number;
+      lucro_mes: string;
+    }>(
+      user.schemaName,
+      `WITH stock AS (
+         SELECT v.preco_compra, v.preco_venda_recomendado,
+                COALESCE((SELECT SUM(valor) FROM vehicle_expenses e WHERE e.vehicle_id = v.id), 0) AS despesas
+         FROM vehicles v WHERE v.estado IN ('disponivel', 'reservado')
+       ), mes AS (
+         SELECT s.preco_final - COALESCE(v.preco_compra, 0) -
+                COALESCE((SELECT SUM(valor) FROM vehicle_expenses e WHERE e.vehicle_id = v.id), 0) AS margem
+         FROM sales s JOIN vehicles v ON v.id = s.vehicle_id
+         WHERE s.estado = 'concluida'
+           AND s.data_venda >= date_trunc('month', (now() AT TIME ZONE 'Europe/Lisbon'))::date
+       )
+       SELECT (SELECT COUNT(*) FROM stock)::int AS em_stock,
+              (SELECT COALESCE(SUM(COALESCE(preco_compra, 0) + despesas), 0) FROM stock) AS investido,
+              (SELECT COALESCE(SUM(preco_venda_recomendado - preco_compra - despesas), 0) FROM stock
+                WHERE preco_venda_recomendado IS NOT NULL AND preco_compra IS NOT NULL) AS margem_prevista,
+              (SELECT COUNT(*) FROM stock WHERE preco_venda_recomendado IS NULL OR preco_compra IS NULL)::int AS sem_preco,
+              (SELECT COUNT(*) FROM mes)::int AS vendas_mes,
+              (SELECT COALESCE(SUM(margem), 0) FROM mes) AS lucro_mes`,
+    );
+    return {
+      em_stock: r.em_stock,
+      investido: Number(r.investido),
+      margem_prevista: Number(r.margem_prevista),
+      sem_preco: r.sem_preco,
+      vendas_mes: r.vendas_mes,
+      lucro_mes: Number(r.lucro_mes),
+    };
+  }
+
   // Margem projetada do que ainda está em stock (disponível/reservado) —
   // antes só se via margem de veículos já vendidos, nunca uma estimativa do
   // que falta ganhar com o que já está parado no stand.
