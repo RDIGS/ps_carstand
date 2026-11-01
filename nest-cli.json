@@ -4,7 +4,11 @@
   "sourceRoot": "src",
   "compilerOptions": {
     "deleteOutDir": true,
-    "assets": ["**/*.sql", "**/*.pdf"],
+    "assets": [
+      "**/*.sql",
+      "**/*.pdf",
+      "**/*.woff2"
+    ],
     "watchAssets": true
   }
 }

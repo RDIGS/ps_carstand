@@ -2,6 +2,8 @@ import { Body, Controller, Get, Param, Post, Query, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
+import { readFile } from 'fs/promises';
+import { join } from 'path';
 import { Public } from '../common/decorators/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -46,7 +48,7 @@ export class SiteController {
       .set('Cache-Control', cache ? 'public, max-age=60' : 'no-store')
       .set(
         'Content-Security-Policy',
-        `default-src 'none'; img-src 'self' ${origem}; style-src 'unsafe-inline'; form-action 'self' ${origem}; base-uri 'none'; frame-ancestors 'none'`,
+        `default-src 'none'; img-src 'self' ${origem}; style-src 'unsafe-inline'; font-src 'self' ${origem}; form-action 'self' ${origem}; base-uri 'none'; frame-ancestors 'none'`,
       )
       .set('X-Content-Type-Options', 'nosniff')
       .set('Referrer-Policy', 'strict-origin-when-cross-origin')
@@ -78,6 +80,19 @@ export class SiteController {
       .send(bytes);
   }
 
+  // Letras do site (Playfair Display, Manrope — licença OFL), servidas daqui
+  // para os visitantes não pedirem nada à Google. Só os ficheiros da pasta.
+  @Get('site/_fontes/:ficheiro')
+  async fonte(@Param('ficheiro') ficheiro: string, @Res() res: Response) {
+    if (!/^[A-Za-z]+-[A-Za-z]+.woff2$/.test(ficheiro)) return res.status(404).send();
+    try {
+      const bytes = await readFile(join(__dirname, 'fontes', ficheiro));
+      res.status(200).type('font/woff2').set('Cache-Control', 'public, max-age=31536000, immutable').send(bytes);
+    } catch {
+      res.status(404).send();
+    }
+  }
+
   // Limite alto: uma página de lista pede uma imagem por carro.
   @Get('site/:slug/foto/:fotoId')
   @Throttle({ default: { limit: 600, ttl: 60_000 } })
@@ -105,7 +120,7 @@ export class SiteController {
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
   async lista(@Param('slug') slug: string, @Res() res: Response) {
     const stand = await this.site.resolverStand(slug);
-    if (!stand) return this.html(res, 404, paginaNaoEncontrada());
+    if (!stand) return this.html(res, 404, paginaNaoEncontrada(this.base));
     const veiculos = await this.site.listarVeiculos(stand.schemaName);
     this.html(res, 200, paginaLista(this.base, this.standPublico(stand), this.comFotos(slug, veiculos)), true);
   }
@@ -115,7 +130,7 @@ export class SiteController {
   async ficha(@Param('slug') slug: string, @Param('vehicleId') vehicleId: string, @Res() res: Response) {
     const stand = await this.site.resolverStand(slug);
     const resultado = stand ? await this.site.obterVeiculo(stand.schemaName, vehicleId) : null;
-    if (!stand || !resultado) return this.html(res, 404, paginaNaoEncontrada());
+    if (!stand || !resultado) return this.html(res, 404, paginaNaoEncontrada(this.base));
     this.html(res, 200, paginaFicha(
         this.base,
         this.standPublico(stand),
@@ -128,7 +143,7 @@ export class SiteController {
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
   async formulario(@Param('slug') slug: string, @Query('v') vehicleId: string | undefined, @Res() res: Response) {
     const stand = await this.site.resolverStand(slug);
-    if (!stand) return this.html(res, 404, paginaNaoEncontrada());
+    if (!stand) return this.html(res, 404, paginaNaoEncontrada(this.base));
     const veiculos = await this.site.listarVeiculos(stand.schemaName);
     this.html(res, 200, paginaMarcar(this.base, this.standPublico(stand), veiculos, { vehicleId }, [], this.site.limitesData()));
   }
@@ -139,7 +154,7 @@ export class SiteController {
   @Throttle({ default: { limit: 5, ttl: 3_600_000 } })
   async marcar(@Param('slug') slug: string, @Body() body: Record<string, unknown>, @Res() res: Response) {
     const stand = await this.site.resolverStand(slug);
-    if (!stand) return this.html(res, 404, paginaNaoEncontrada());
+    if (!stand) return this.html(res, 404, paginaNaoEncontrada(this.base));
     const campos = this.site.lerCampos(body ?? {});
     const erros = await this.site.criarPedido(stand.schemaName, campos);
     if (erros.length) {
@@ -152,7 +167,7 @@ export class SiteController {
   @Get('site/:slug/obrigado')
   async obrigado(@Param('slug') slug: string, @Res() res: Response) {
     const stand = await this.site.resolverStand(slug);
-    if (!stand) return this.html(res, 404, paginaNaoEncontrada());
+    if (!stand) return this.html(res, 404, paginaNaoEncontrada(this.base));
     this.html(res, 200, paginaObrigado(this.base, this.standPublico(stand)));
   }
 }
