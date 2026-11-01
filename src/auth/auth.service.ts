@@ -17,7 +17,7 @@ export interface LoginResult {
   jwt: string;
   expiresIn: number;
   refreshToken: string;
-  user: { id: string; nome: string; role: string; idioma: string };
+  user: { id: string; nome: string; role: string; idioma: string; tema: string };
 }
 
 @Injectable()
@@ -80,7 +80,7 @@ export class AuthService {
       jwt,
       expiresIn: Number(this.config.get('JWT_EXPIRES_IN', 3600)),
       refreshToken,
-      user: { id: person.id, nome: person.nome, role: membership.role, idioma: person.idioma },
+      user: { id: person.id, nome: person.nome, role: membership.role, idioma: person.idioma, tema: person.tema },
     };
   }
 
@@ -152,7 +152,7 @@ export class AuthService {
       jwt: await this.signAccessToken(payload),
       expiresIn: Number(this.config.get('JWT_EXPIRES_IN', 3600)),
       refreshToken: newRawToken,
-      user: { id: person.id, nome: person.nome, role: membership.role, idioma: person.idioma },
+      user: { id: person.id, nome: person.nome, role: membership.role, idioma: person.idioma, tema: person.tema },
     };
   }
 
@@ -161,6 +161,12 @@ export class AuthService {
   async updateIdioma(personId: string, idioma: 'pt' | 'en'): Promise<{ idioma: string }> {
     const person = await this.prisma.person.update({ where: { id: personId }, data: { idioma } });
     return { idioma: person.idioma };
+  }
+
+  // Aparência da app — preferência da pessoa, como o idioma.
+  async updateTema(personId: string, tema: string): Promise<{ tema: string }> {
+    const person = await this.prisma.person.update({ where: { id: personId }, data: { tema } });
+    return { tema: person.tema };
   }
 
   // Estado da subscrição para o aviso persistente no app (secção 3.4, O14) —

@@ -5,6 +5,7 @@ import { ValidateTokenDto } from './dto/validate-token.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { UpdateIdiomaDto } from './dto/update-idioma.dto';
+import { UpdateTemaDto } from './dto/update-tema.dto';
 import { ResetPasswordWithCodeDto } from './dto/reset-password-with-code.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -59,6 +60,11 @@ export class AuthController {
   @Patch('idioma')
   updateIdioma(@CurrentUser() user: JwtPayload, @Body() dto: UpdateIdiomaDto) {
     return this.authService.updateIdioma(user.sub, dto.idioma);
+  }
+
+  @Patch('tema')
+  updateTema(@CurrentUser() user: JwtPayload, @Body() dto: UpdateTemaDto) {
+    return this.authService.updateTema(user.sub, dto.tema);
   }
 
   // Só o owner (secção 4) — é um assunto financeiro/administrativo do

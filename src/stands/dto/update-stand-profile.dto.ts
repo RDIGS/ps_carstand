@@ -1,6 +1,4 @@
-import { IsBoolean, IsIn, IsOptional, IsString, Matches, MaxLength, ValidateIf } from 'class-validator';
-
-export const TEMAS = ['editorial', 'luxo', 'minimal'] as const;
+import { IsBoolean, IsOptional, IsString, Matches, MaxLength, ValidateIf } from 'class-validator';
 
 // Primeiro segmento do endereço do site — não pode coincidir com caminhos da
 // própria app web nem do backend (`/site/:slug` é servido pelo backend, mas o
@@ -41,10 +39,6 @@ export class UpdateStandProfileDto {
   @IsString()
   @MaxLength(80)
   localidade?: string | null;
-
-  @IsOptional()
-  @IsIn(TEMAS)
-  tema?: (typeof TEMAS)[number];
 
   // `null` = remover o endereço (e o site deixa de estar acessível).
   @IsOptional()

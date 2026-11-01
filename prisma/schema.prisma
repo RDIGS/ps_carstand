@@ -55,6 +55,9 @@ model Person {
   email        String   @unique
   passwordHash String   @map("password_hash")
   idioma       String   @default("pt")
+  // Aparência da app escolhida pela própria pessoa (como o idioma, segue-a
+  // em qualquer dispositivo): "editorial" | "luxo" | "minimal".
+  tema         String   @default("editorial")
   ativo        Boolean  @default(true)
   criadoEm     DateTime @default(now()) @map("criado_em")
 
@@ -93,9 +96,6 @@ model Stand {
   // as declarações usam o `nome`.
   denominacaoSocial           String?     @map("denominacao_social")
   localidade                  String?
-  // Aparência da app escolhida pelo owner, igual para toda a equipa:
-  // "editorial" (claro, serifado) | "luxo" (escuro, champanhe) | "minimal".
-  tema                        String      @default("editorial")
   contacto                    String?
   redesSociais                String?     @map("redes_sociais")
   logoUrl                     String?     @map("logo_url")
