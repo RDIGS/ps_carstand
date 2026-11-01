@@ -355,10 +355,6 @@ export function paginaFicha(base: string, stand: StandPublico, v: VeiculoPublico
 <a class="voltar" href="${esc(base)}/${esc(stand.slug)}#stock">← Todas as viaturas</a>
 <div class="ficha">
 <div class="g">${galeria}</div>
-<div class="specs"><h2>Ficha técnica</h2><dl>${linhas
-    .filter(([, valor]) => valor)
-    .map(([nome, valor]) => `<div><dt>${esc(nome)}</dt><dd>${esc(valor)}</dd></div>`)
-    .join('')}</dl></div>
 <aside class="painel">
 <div class="linha1" style="display:flex;align-items:center;gap:8px"><span class="ponto${v.estado === 'reservado' ? ' res' : ''}"></span><span class="kicker">${v.estado === 'reservado' ? 'Reservado' : 'Disponível'}</span></div>
 <h1>${esc(titulo(v))}</h1>${v.versao ? `<div class="versao">${esc(v.versao)}</div>` : ''}
@@ -369,6 +365,10 @@ export function paginaFicha(base: string, stand: StandPublico, v: VeiculoPublico
     .join('')}</div>
 <div class="acoes">${botoesContacto(base, stand, { vehicleId: v.id })}</div>
 </aside>
+<div class="specs"><h2>Ficha técnica</h2><dl>${linhas
+    .filter(([, valor]) => valor)
+    .map(([nome, valor]) => `<div><dt>${esc(nome)}</dt><dd>${esc(valor)}</dd></div>`)
+    .join('')}</dl></div>
 </div></div>`;
 
   return layout({
