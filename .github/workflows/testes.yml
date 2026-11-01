@@ -1,0 +1,26 @@
+# Corre os testes a cada envio (push) e pull request. Se algum falhar, o
+# commit fica a vermelho no GitHub e chega um email — antes de alguém dar
+# pelo problema na app. Os testes cobrem as regras que não podem partir
+# (vendedor não vê preço de compra, links de ficheiros só do próprio stand,
+# membro removido perde o acesso, site público sem dados privados...).
+name: Testes
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Compilar (tipos)
+        run: npx tsc --noEmit -p tsconfig.json
+      - name: Testes
+        run: npx jest

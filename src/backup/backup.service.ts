@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Cron } from '@nestjs/schedule';
 import { mkdir, readdir, unlink, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { Pool } from 'pg';
@@ -26,6 +27,9 @@ const INTERVALO_MINIMO_HORAS = 1;
 // Quantos backups manter (os mais antigos além disto são apagados a cada
 // corrida). Com 1 arranque/dia dá ~1 mês de histórico.
 const NUM_BACKUPS_A_MANTER = 30;
+// Cópia incremental dos ficheiros do Storage para o GitHub (ver
+// sincronizarFicheirosGitHub): no máximo isto por corrida.
+const MAX_FICHEIROS_POR_CORRIDA = 300;
 
 /**
  * Faz um dump completo da base de dados (DB Central + todos os schemas de
@@ -67,6 +71,18 @@ export class BackupService implements OnApplicationBootstrap, OnApplicationShutd
     );
   }
 
+  // Backup diário às 3h (Lisboa). Antes só havia o do arranque, que bastava
+  // enquanto o Render adormecia e acordava várias vezes por dia; com o
+  // servidor sempre acordado (ManterAcordadoCron), sem isto só havia backup
+  // a cada deploy.
+  @Cron('0 3 * * *', { timeZone: 'Europe/Lisbon' })
+  async backupDiario(): Promise<void> {
+    if (this.config.get<string>('BACKUP_DESATIVADO') === '1') return;
+    await this.runBackup().catch((err) =>
+      this.logger.error(`Backup diário falhou: ${err instanceof Error ? err.message : err}`),
+    );
+  }
+
   async runBackup(): Promise<void> {
     const backups = await this.listBackups();
     const ultimo = backups.at(-1);
@@ -92,6 +108,12 @@ export class BackupService implements OnApplicationBootstrap, OnApplicationShutd
       // Nunca falha o backup todo por causa do 2º destino — o principal
       // (Supabase/disco, acima) já está garantido nesta altura.
       this.logger.warn(`Backup para o GitHub falhou: ${err instanceof Error ? err.message : err}`);
+    }
+
+    try {
+      await this.sincronizarFicheirosGitHub();
+    } catch (err) {
+      this.logger.warn(`Cópia dos ficheiros para o GitHub falhou: ${err instanceof Error ? err.message : err}`);
     }
 
     this.logger.log(`Backup concluído: ${nomeFicheiro} (${(conteudo.length / 1024).toFixed(0)} KB)`);
@@ -215,6 +237,68 @@ export class BackupService implements OnApplicationBootstrap, OnApplicationShutd
     if (!res.ok) {
       throw new Error(`Falha ao enviar backup para o GitHub: ${res.status} — ${await res.text()}`);
     }
+  }
+
+  // Cópia das fotos e documentos (Storage) para o mesmo repositório privado,
+  // em ficheiros/<caminho> — a BD sozinha não chega para recuperar o stand se
+  // o projeto Supabase se perder. Incremental: cada ficheiro tem um caminho
+  // único e nunca muda de conteúdo (StorageService), por isso basta enviar os
+  // que ainda não estão no repositório; nada é apagado (é um backup). Com um
+  // limite por corrida, para não prender o servidor — o resto vai na seguinte.
+  private async sincronizarFicheirosGitHub(): Promise<void> {
+    const github = this.githubConfig();
+    const supabaseUrl = this.config.get<string>('SUPABASE_URL');
+    const serviceKey = this.config.get<string>('SUPABASE_SERVICE_ROLE_KEY');
+    const bucket = this.config.get<string>('SUPABASE_STORAGE_BUCKET', 'documentos');
+    if (!github || !supabaseUrl || !serviceKey) return;
+
+    const ghHeaders = { Authorization: `Bearer ${github.token}`, Accept: 'application/vnd.github+json' };
+    const jaCopiados = new Set<string>();
+    const arvore = await fetch(`https://api.github.com/repos/${github.repo}/git/trees/HEAD?recursive=1`, {
+      headers: ghHeaders,
+    });
+    if (arvore.ok) {
+      const { tree } = (await arvore.json()) as { tree: { path: string; type: string }[] };
+      for (const t of tree) {
+        if (t.type === 'blob' && t.path.startsWith('ficheiros/')) jaCopiados.add(t.path.slice('ficheiros/'.length));
+      }
+    } else if (arvore.status !== 404 && arvore.status !== 409) {
+      throw new Error(`listar o repositório: ${arvore.status}`);
+    }
+
+    const sbHeaders = { Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' };
+    const listar = async (prefixo: string): Promise<{ caminho: string; tamanho: number }[]> => {
+      const res = await fetch(`${supabaseUrl}/storage/v1/object/list/${bucket}`, {
+        method: 'POST',
+        headers: sbHeaders,
+        body: JSON.stringify({ prefix: prefixo, limit: 1000, offset: 0 }),
+      });
+      if (!res.ok) throw new Error(`listar o Storage: ${res.status}`);
+      const itens = (await res.json()) as { name: string; id: string | null; metadata?: { size?: number } }[];
+      const out: { caminho: string; tamanho: number }[] = [];
+      for (const it of itens) {
+        if (it.id === null) out.push(...(await listar(`${prefixo}${it.name}/`)));
+        else out.push({ caminho: `${prefixo}${it.name}`, tamanho: it.metadata?.size ?? 0 });
+      }
+      return out;
+    };
+
+    // A API do GitHub só aceita ficheiros até 100 MB (as fotos têm no máx. 8).
+    const emFalta = (await listar('')).filter((f) => !jaCopiados.has(f.caminho) && f.tamanho < 50 * 1024 * 1024);
+    let copiados = 0;
+    for (const f of emFalta.slice(0, MAX_FICHEIROS_POR_CORRIDA)) {
+      const dl = await fetch(`${supabaseUrl}/storage/v1/object/${bucket}/${f.caminho}`, { headers: sbHeaders });
+      if (!dl.ok) continue;
+      const conteudo = Buffer.from(await dl.arrayBuffer());
+      const up = await fetch(`https://api.github.com/repos/${github.repo}/contents/ficheiros/${f.caminho}`, {
+        method: 'PUT',
+        headers: { ...ghHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: `Ficheiro ${f.caminho}`, content: conteudo.toString('base64') }),
+      });
+      if (up.ok) copiados++;
+      else this.logger.warn(`Ficheiro não copiado para o GitHub (${f.caminho}): ${up.status}`);
+    }
+    this.logger.log(`Ficheiros no GitHub: ${copiados} novos, ${Math.max(0, emFalta.length - copiados)} por copiar.`);
   }
 
   private async listBackupsGitHub(): Promise<{ nome: string; sha: string }[]> {
