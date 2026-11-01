@@ -8,6 +8,7 @@ import { JwtPayload } from '../common/types/jwt-payload.interface';
 import { hashPassword } from '../common/utils/password.util';
 import { hashToken } from '../common/utils/token-hash.util';
 import { generatePasswordResetCode } from '../common/utils/reset-code.util';
+import { invalidarMembro } from '../auth/membros-ativos.cache';
 
 const RESET_CODE_VALIDADE_MS = 60 * 60 * 1000; // 1h — código de uso único, ver secção 29
 
@@ -69,6 +70,7 @@ export class TeamService {
       where: { id: memberId },
       data: { role: dto.role, ativo: dto.ativo },
     });
+    invalidarMembro(membership.personId);
     // Desativar um membro tem de cortar o acesso a sério e já, não só
     // impedir logins novos — sem isto o refresh token dele continuava a
     // emitir JWTs novos e válidos até expirar sozinho (30 dias por
@@ -134,6 +136,7 @@ export class TeamService {
     if (!membership) throw new NotFoundException({ error: 'nao_encontrado', message: 'Membro não encontrado.' });
 
     await this.prisma.standMember.delete({ where: { id: memberId } });
+    invalidarMembro(membership.personId);
     // Mesma razão de update(): remover tem de cortar sessões já ativas.
     await this.prisma.refreshToken.updateMany({
       where: { personId: membership.personId, standId: user.standId, revogado: false },
@@ -183,6 +186,7 @@ export class TeamService {
       where: { id: memberId },
       data: { role: dto.role, ativo: dto.ativo },
     });
+    invalidarMembro(membership.personId);
     // Mesma razão de update() acima.
     if (updated.ativo === false) {
       await this.prisma.refreshToken.updateMany({
@@ -197,6 +201,7 @@ export class TeamService {
     const membership = await this.prisma.standMember.findFirst({ where: { id: memberId, standId } });
     if (!membership) throw new NotFoundException({ error: 'nao_encontrado', message: 'Membro não encontrado.' });
     await this.prisma.standMember.delete({ where: { id: memberId } });
+    invalidarMembro(membership.personId);
     // Mesma razão de remove() acima.
     await this.prisma.refreshToken.updateMany({
       where: { personId: membership.personId, standId, revogado: false },

@@ -56,6 +56,12 @@ export class BackupService implements OnApplicationBootstrap, OnApplicationShutd
   }
 
   onApplicationBootstrap(): void {
+    // Para correr o backend localmente contra a BD de produção sem gerar
+    // backups (nem aplicar a retenção, que apaga o mais antigo).
+    if (this.config.get<string>('BACKUP_DESATIVADO') === '1') {
+      this.logger.log('BACKUP_DESATIVADO=1 — backup automático desligado.');
+      return;
+    }
     this.runBackup().catch((err) =>
       this.logger.error(`Backup automático falhou: ${err instanceof Error ? err.message : err}`),
     );

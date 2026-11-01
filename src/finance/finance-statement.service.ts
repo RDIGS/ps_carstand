@@ -140,18 +140,8 @@ export class FinanceStatementService {
     }
 
     // Fotos dos comprovativos — descarregadas aqui (não no template, que
-    // fica só com a geração do PDF em si) porque cada `comprovativo_url` é
-    // um URL assinado do Storage, não um ficheiro local.
-    const baixarComprovativo = async (url: string | null): Promise<Buffer | null> => {
-      if (!url) return null;
-      try {
-        const resposta = await fetch(url);
-        if (!resposta.ok) return null;
-        return Buffer.from(await resposta.arrayBuffer());
-      } catch {
-        return null;
-      }
-    };
+    // fica só com a geração do PDF em si) a partir do Storage privado.
+    const baixarComprovativo = (ref: string | null) => this.storage.descarregar(ref);
 
     const mapEntry = async (row: FinanceEntryRow): Promise<ExtratoDespesaLinha> => ({
       data: formatarData(row.data),

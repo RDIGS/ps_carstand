@@ -18,7 +18,19 @@ const CLOUDFLARE_IPS = [
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  app.enableCors();
+  // Só a app Web (e localhost, em desenvolvimento) pode chamar a API a partir
+  // de um browser. As apps nativas (Windows/Android) não mandam Origin e não
+  // são afetadas. CORS_ORIGINS acrescenta outras origens, separadas por vírgula.
+  const origensPermitidas = [
+    'https://ps-carstand-app.onrender.com',
+    ...(process.env.CORS_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean),
+  ];
+  app.enableCors({
+    origin: (origin: string | undefined, cb: (err: Error | null, ok?: boolean) => void) => {
+      const ok = !origin || origensPermitidas.includes(origin) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+      cb(null, ok);
+    },
+  });
   // O site público (/site/*) tem limites por visitante: sem isto o backend
   // veria o IP de um proxy e todos os visitantes partilhariam o mesmo limite.
   // Confia só em proxies conhecidos (rede interna do Render + Cloudflare): o
@@ -30,8 +42,11 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new ApiExceptionFilter());
 
-  // Fallback de storage local (ver StorageService) enquanto o Supabase Storage não está configurado.
-  app.useStaticAssets(join(process.cwd(), 'storage'), { prefix: '/storage' });
+  // Fallback de storage local (ver StorageService) — só em desenvolvimento
+  // sem Supabase. Em produção nunca: seria uma pasta de ficheiros pública.
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    app.useStaticAssets(join(process.cwd(), 'storage'), { prefix: '/storage' });
+  }
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3000;
   await app.listen(port);

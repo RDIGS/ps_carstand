@@ -38,7 +38,9 @@ const CABECALHO = [
   'fornecedor_nif',
   'valor_iva',
   'taxa_iva',
-  'comprovativo_url',
+  // Antes era o URL (assinado 10 anos) — os comprovativos são privados e os
+  // links passaram a durar 1 hora; as imagens vão dentro do PDF do extrato.
+  'comprovativo',
 ];
 
 // Mitigação padrão de "CSV/Formula Injection" (OWASP): um valor de texto
@@ -74,7 +76,7 @@ export function generateExtratoMensalCsv(linhas: ExtratoCsvLinha[]): Buffer {
       l.fornecedorNif ?? '',
       l.valorIva != null ? l.valorIva.toFixed(2) : '',
       l.taxaIva != null ? l.taxaIva.toFixed(2) : '',
-      l.comprovativoUrl ?? '',
+      l.comprovativoUrl ? 'sim (ver PDF)' : '',
     ]
       .map((campo) => escapar(String(campo)))
       .join(','),

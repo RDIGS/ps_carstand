@@ -15,8 +15,10 @@ const COLUNAS_PUBLICAS = `
   EXTRACT(YEAR FROM COALESCE(v.data_primeira_matricula_original, v.data_primeira_matricula))::int AS ano,
   v.combustivel, v.potencia_kw, v.cilindrada, v.cor, v.num_lugares, v.categoria,
   v.preco_venda_recomendado AS preco, v.estado,
-  (SELECT url FROM vehicle_photos p WHERE p.vehicle_id = v.id AND p.tipo = 'foto_viatura'
+  (SELECT p.id FROM vehicle_photos p WHERE p.vehicle_id = v.id AND p.tipo = 'foto_viatura'
     ORDER BY p.criado_em ASC LIMIT 1) AS foto_capa`;
+// foto_capa/fotos são IDs de foto — o controller transforma-os em
+// `<base>/<slug>/foto/<id>`; o Storage nunca aparece no site.
 
 // Máximo de pedidos aceites por stand em 24h — trava abusos mesmo que o
 // limite por IP falhe (ex.: muitos IPs diferentes).
@@ -71,10 +73,22 @@ export class SiteService {
     if (!veiculo) return null;
     const fotos = await this.tenant.query(
       schemaName,
-      `SELECT url FROM vehicle_photos WHERE vehicle_id = $1 AND tipo = 'foto_viatura' ORDER BY criado_em ASC LIMIT 30`,
+      `SELECT id FROM vehicle_photos WHERE vehicle_id = $1 AND tipo = 'foto_viatura' ORDER BY criado_em ASC LIMIT 30`,
       [id],
     );
-    return { veiculo, fotos: fotos.map((f: { url: string }) => f.url) };
+    return { veiculo, fotos: fotos.map((f: { id: string }) => f.id) };
+  }
+
+  /** Referência no Storage de uma foto pública (foto_viatura de um carro visível no site), ou null. */
+  async refFotoPublica(schemaName: string, photoId: string): Promise<string | null> {
+    if (!UUID_RE.test(photoId)) return null;
+    const [foto] = await this.tenant.query<{ url: string }>(
+      schemaName,
+      `SELECT p.url FROM vehicle_photos p JOIN vehicles v ON v.id = p.vehicle_id
+       WHERE p.id = $1 AND p.tipo = 'foto_viatura' AND v.estado = ANY($2)`,
+      [photoId, ESTADOS_PUBLICOS],
+    );
+    return foto?.url ?? null;
   }
 
   /** Dia de hoje e limite máximo (formato do <input type="date">), em hora de Lisboa. */

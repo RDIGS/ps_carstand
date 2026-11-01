@@ -1,4 +1,3 @@
-import { Logger } from '@nestjs/common';
 import { Desenho, PessoaDeclaracao, StandDeclaracao, VeiculoDeclaracao } from './templates/declaracao-base';
 import { desenharAutorizacaoDadosComprador, desenharCompraVenda } from './templates/declaracao-compra-venda.template';
 import { desenharCirculacao } from './templates/declaracao-circulacao.template';
@@ -25,21 +24,6 @@ export interface DadosDeclaracao {
   preco?: number | null;
   pneusDianteiros?: string | null;
   pneusTraseiros?: string | null;
-}
-
-const logger = new Logger('Declaracoes');
-
-/** Descarrega o logótipo do stand; sem logótipo (ou se falhar) a declaração sai sem ele. */
-async function descarregarLogo(url: string | null): Promise<Buffer | null> {
-  if (!url) return null;
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return Buffer.from(await res.arrayBuffer());
-  } catch (err) {
-    logger.warn(`Logótipo do stand não descarregado: ${err instanceof Error ? err.message : err}`);
-    return null;
-  }
 }
 
 // Valores guardados como código (ex. "ligeiro_passageiros", "diesel") saem
@@ -97,8 +81,8 @@ export function veiculoParaDeclaracao(v: Record<string, any>): VeiculoDeclaracao
   };
 }
 
-/** Gera o PDF da declaração pedida. */
-export async function gerarDeclaracaoPdf(dados: DadosDeclaracao): Promise<Buffer> {
+/** Gera o PDF da declaração pedida (`logo`: bytes do logótipo do stand, ou null — sai sem ele). */
+export async function gerarDeclaracaoPdf(dados: DadosDeclaracao, logo: Buffer | null): Promise<Buffer> {
   const s = dados.stand;
   const stand: StandDeclaracao = {
     denominacao: s.denominacaoSocial?.trim() || s.nome,
@@ -106,7 +90,7 @@ export async function gerarDeclaracaoPdf(dados: DadosDeclaracao): Promise<Buffer
     morada: s.morada,
     localidade: s.localidade,
     contacto: s.contacto,
-    logo: await descarregarLogo(s.logoUrl),
+    logo,
   };
   const veiculo = veiculoParaDeclaracao(dados.veiculo);
   const d = await Desenho.criar(stand.logo);

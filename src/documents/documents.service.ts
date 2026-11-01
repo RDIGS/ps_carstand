@@ -14,7 +14,7 @@ export class DocumentsService {
    * cada emissão tem o seu ficheiro (nunca substitui uma anterior).
    */
   async gerarDeclaracao(schemaName: string, vehicleId: string, dados: DadosDeclaracao): Promise<string> {
-    const pdfBuffer = await gerarDeclaracaoPdf(dados);
+    const pdfBuffer = await gerarDeclaracaoPdf(dados, await this.storage.descarregar(dados.stand.logoUrl));
     return this.storage.upload(
       `${schemaName}/vehicles/${vehicleId}/declaracoes/${dados.tipo}-${randomUUID()}.pdf`,
       pdfBuffer,

@@ -2,7 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { UrlsAssinadasInterceptor } from './storage/urls-assinadas.interceptor';
 
 import { PrismaModule } from './prisma/prisma.module';
 import { TenantModule } from './tenant/tenant.module';
@@ -67,6 +68,7 @@ import { StandThrottlerGuard } from './common/guards/stand-throttler.guard';
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: StandThrottlerGuard },
+    { provide: APP_INTERCEPTOR, useClass: UrlsAssinadasInterceptor },
   ],
 })
 export class AppModule {}
