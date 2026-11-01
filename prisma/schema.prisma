@@ -93,6 +93,9 @@ model Stand {
   // as declarações usam o `nome`.
   denominacaoSocial           String?     @map("denominacao_social")
   localidade                  String?
+  // Aparência da app escolhida pelo owner, igual para toda a equipa:
+  // "editorial" (claro, serifado) | "luxo" (escuro, champanhe) | "minimal".
+  tema                        String      @default("editorial")
   contacto                    String?
   redesSociais                String?     @map("redes_sociais")
   logoUrl                     String?     @map("logo_url")
